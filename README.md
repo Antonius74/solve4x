@@ -13,6 +13,20 @@ python3 -m http.server 8080
 
 Poi visita `http://localhost:8080`.
 
+## Deploy su GitHub Pages
+
+Il progetto e gia pronto per GitHub Pages tramite GitHub Actions.
+
+1. Fai push del repository su GitHub (branch `main` o `master`).
+2. Vai su **Settings > Pages** del repository.
+3. In **Build and deployment**, scegli **Source: GitHub Actions**.
+4. Fai un nuovo push (oppure avvia manualmente il workflow dalla tab **Actions**).
+5. Dopo il deploy, il sito sara disponibile su:
+   - `https://<username>.github.io/<nome-repo>/` (project page)
+   - oppure `https://<username>.github.io/` se usi un repo `<username>.github.io`.
+
+Workflow incluso: `.github/workflows/deploy-pages.yml`.
+
 ## Cosa puoi fare
 
 - Rilevamento automatico 2D/3D in base alle variabili presenti.
