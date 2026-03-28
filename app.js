@@ -1,81 +1,103 @@
 const MODE_2D = "2d";
 const MODE_3D = "3d";
 
-const presets = {
-  "2d": [
-    { expression: "sin(x)", xMin: -10, xMax: 10, resolution: 220, xScale: "linear", yScale: "linear" },
-    {
-      expression: "sin(4*x) * exp(-abs(x)/3)",
-      xMin: -12,
-      xMax: 12,
-      resolution: 260,
-      xScale: "linear",
-      yScale: "linear",
-    },
-    { expression: "log(x)", xMin: 0.1, xMax: 30, resolution: 220, xScale: "log", yScale: "linear" },
-    { expression: "x^3 - 4*x", xMin: -6, xMax: 6, resolution: 180, xScale: "linear", yScale: "linear" },
-  ],
-  "3d": [
-    {
-      expression: "sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + 0.1)",
-      xMin: -12,
-      xMax: 12,
-      yMin: -12,
-      yMax: 12,
-      resolution: 120,
-      xScale: "linear",
-      yScale: "linear",
-      zScale: "linear",
-      colorMap: "Viridis",
-    },
-    {
-      expression: "x^2 - y^2",
-      xMin: -6,
-      xMax: 6,
-      yMin: -6,
-      yMax: 6,
-      resolution: 110,
-      xScale: "linear",
-      yScale: "linear",
-      zScale: "linear",
-      colorMap: "Turbo",
-    },
-    {
-      expression: "exp(-(x^2 + y^2)/8)",
-      xMin: -8,
-      xMax: 8,
-      yMin: -8,
-      yMax: 8,
-      resolution: 130,
-      xScale: "linear",
-      yScale: "linear",
-      zScale: "linear",
-      colorMap: "Plasma",
-    },
-    {
-      expression: "log(x + y + 4)",
-      xMin: 0.1,
-      xMax: 20,
-      yMin: 0.1,
-      yMax: 20,
-      resolution: 110,
-      xScale: "log",
-      yScale: "log",
-      zScale: "linear",
-      colorMap: "Cividis",
-    },
-  ],
-};
+const RESERVED_IDENTIFIERS = new Set([
+  "e",
+  "E",
+  "pi",
+  "PI",
+  "tau",
+  "phi",
+  "i",
+  "Infinity",
+  "NaN",
+  "true",
+  "false",
+  "null",
+  "undefined",
+]);
+
+const presets = [
+  {
+    expression: "sin(x)",
+    xMin: -10,
+    xMax: 10,
+    yMin: -10,
+    yMax: 10,
+    resolution: 220,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Viridis",
+    params: {},
+  },
+  {
+    expression: "z = x^2 + y^2",
+    xMin: -8,
+    xMax: 8,
+    yMin: -8,
+    yMax: 8,
+    resolution: 120,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Turbo",
+    params: {},
+  },
+  {
+    expression: "a * sin(b * x) * exp(-abs(x)/c)",
+    xMin: -14,
+    xMax: 14,
+    yMin: -10,
+    yMax: 10,
+    resolution: 260,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Viridis",
+    params: { a: 1, b: 4, c: 3 },
+  },
+  {
+    expression: "sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + k)",
+    xMin: -12,
+    xMax: 12,
+    yMin: -12,
+    yMax: 12,
+    resolution: 120,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Plasma",
+    params: { k: 0.1 },
+  },
+  {
+    expression: "log(x)",
+    xMin: 0.1,
+    xMax: 30,
+    yMin: -10,
+    yMax: 10,
+    resolution: 240,
+    xScale: "log",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Cividis",
+    params: {},
+  },
+];
 
 const refs = {
-  modeSegment: document.getElementById("modeSegment"),
   expression: document.getElementById("expression"),
   expressionHint: document.getElementById("expressionHint"),
+  detectedMode: document.getElementById("detectedMode"),
+  xRangeLabel: document.getElementById("xRangeLabel"),
+  yRangeLabel: document.getElementById("yRangeLabel"),
   xMin: document.getElementById("xMin"),
   xMax: document.getElementById("xMax"),
   yMin: document.getElementById("yMin"),
   yMax: document.getElementById("yMax"),
   yRangeGroup: document.getElementById("yRangeGroup"),
+  paramGroup: document.getElementById("paramGroup"),
+  paramInputs: document.getElementById("paramInputs"),
   resolution: document.getElementById("resolution"),
   xScale: document.getElementById("xScale"),
   yScale: document.getElementById("yScale"),
@@ -91,7 +113,6 @@ const refs = {
 };
 
 const initialState = {
-  mode: MODE_2D,
   expression: "sin(x)",
   xMin: -10,
   xMax: 10,
@@ -104,7 +125,9 @@ const initialState = {
   colorMap: "Viridis",
 };
 
-let currentMode = initialState.mode;
+let expressionDebounceId;
+let currentInference = null;
+const parameterValues = {};
 
 function setMessage(text, type = "") {
   refs.message.className = "message";
@@ -125,7 +148,7 @@ function linspaceLinear(min, max, count) {
 
 function linspaceLog(min, max, count) {
   if (min <= 0 || max <= 0) {
-    throw new Error("La scala log richiede estremi > 0.");
+    throw new Error("La scala log richiede limiti maggiori di zero.");
   }
   if (count <= 1) return [min];
   const minLog = Math.log10(min);
@@ -139,16 +162,110 @@ function buildAxisValues(min, max, count, scaleType) {
   return linspaceLinear(min, max, count);
 }
 
-function toFiniteValue(value) {
-  if (typeof value === "number") {
-    return Number.isFinite(value) ? value : null;
+function toFiniteNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+
+  if (value && typeof value.toNumber === "function") {
+    const asNumber = value.toNumber();
+    return Number.isFinite(asNumber) ? asNumber : null;
   }
+
   if (value && typeof value.re === "number" && typeof value.im === "number") {
-    // For real-valued plots, keep only purely real values from complex results.
     if (Math.abs(value.im) > 1e-9) return null;
     return Number.isFinite(value.re) ? value.re : null;
   }
+
   return null;
+}
+
+function normalizeExpressionInput(rawInput) {
+  const normalized = rawInput
+    .trim()
+    .replace(/[−–]/g, "-")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/;+$/g, "");
+
+  if (!normalized) throw new Error("Inserisci una funzione valida.");
+
+  const eqIndex = normalized.indexOf("=");
+  if (eqIndex >= 0) {
+    const lhs = normalized.slice(0, eqIndex).trim().toLowerCase();
+    const rhs = normalized.slice(eqIndex + 1).trim();
+    if (!rhs) throw new Error("Manca il termine a destra del segno '='.");
+    return { formula: rhs, lhs };
+  }
+
+  return { formula: normalized, lhs: "" };
+}
+
+function collectVariableNames(parsed) {
+  const symbols = new Set();
+  const calledFunctions = new Set();
+
+  parsed.traverse((node) => {
+    if (node && node.isSymbolNode) {
+      symbols.add(node.name);
+    }
+
+    if (node && node.isFunctionNode && node.fn && node.fn.isSymbolNode) {
+      calledFunctions.add(node.fn.name);
+    }
+  });
+
+  return [...symbols]
+    .filter((name) => !calledFunctions.has(name))
+    .filter((name) => !RESERVED_IDENTIFIERS.has(name))
+    .sort((a, b) => {
+      const priority = (name) => {
+        if (name === "x") return 0;
+        if (name === "y") return 1;
+        return 9;
+      };
+      return priority(a) - priority(b) || a.localeCompare(b);
+    });
+}
+
+function inferAxes(variableNames) {
+  if (variableNames.length === 0) {
+    return { mode: MODE_2D, axisVars: ["x"] };
+  }
+
+  if (variableNames.length === 1) {
+    return { mode: MODE_2D, axisVars: [variableNames[0]] };
+  }
+
+  const first = variableNames.includes("x") ? "x" : variableNames[0];
+  const second = first !== "y" && variableNames.includes("y") ? "y" : variableNames.find((name) => name !== first);
+
+  return { mode: MODE_3D, axisVars: [first, second] };
+}
+
+function inferFromExpression(expressionInput) {
+  const normalized = normalizeExpressionInput(expressionInput);
+
+  let parsed;
+  try {
+    parsed = math.parse(normalized.formula);
+  } catch (error) {
+    throw new Error(`Sintassi non valida: ${error.message}`);
+  }
+
+  const variables = collectVariableNames(parsed);
+  const axisInfo = inferAxes(variables);
+  const axisVars = axisInfo.axisVars.filter(Boolean);
+
+  const parameterVars = variables.filter((name) => !axisVars.includes(name));
+
+  return {
+    formula: normalized.formula,
+    lhs: normalized.lhs,
+    variables,
+    mode: axisInfo.mode,
+    axisVars,
+    parameterVars,
+    compiled: math.compile(normalized.formula),
+  };
 }
 
 function readInputs() {
@@ -158,7 +275,7 @@ function readInputs() {
     xMax: safeNumber(refs.xMax.value, initialState.xMax),
     yMin: safeNumber(refs.yMin.value, initialState.yMin),
     yMax: safeNumber(refs.yMax.value, initialState.yMax),
-    resolution: Math.max(20, Math.min(500, Math.round(safeNumber(refs.resolution.value, initialState.resolution)))),
+    resolution: Math.max(20, Math.min(420, Math.round(safeNumber(refs.resolution.value, initialState.resolution)))),
     xScale: refs.xScale.value,
     yScale: refs.yScale.value,
     zScale: refs.zScale.value,
@@ -166,19 +283,263 @@ function readInputs() {
   };
 }
 
-function updateUiByMode(mode) {
-  currentMode = mode;
-  refs.modeSegment.querySelectorAll(".segment").forEach((btn) => {
-    btn.classList.toggle("active", btn.dataset.mode === mode);
+function setScaleSelectText(select, label) {
+  if (!select || !select.options || select.options.length < 2) return;
+  select.options[0].textContent = `${label} lineare`;
+  select.options[1].textContent = `${label} log`;
+}
+
+function updateUiFromInference(inference) {
+  const axisA = inference.axisVars[0] || "x";
+  const axisB = inference.axisVars[1] || "y";
+
+  refs.xRangeLabel.textContent = `Intervallo ${axisA}`;
+  refs.yRangeLabel.textContent = `Intervallo ${axisB}`;
+  refs.yRangeGroup.style.display = inference.mode === MODE_3D ? "block" : "none";
+  refs.colorGroup.style.display = inference.mode === MODE_3D ? "block" : "none";
+  refs.zScale.style.display = inference.mode === MODE_3D ? "block" : "none";
+  refs.plotTitle.textContent = inference.mode === MODE_3D ? "Grafico 3D" : "Grafico 2D";
+
+  const modeText =
+    inference.mode === MODE_3D ? `3D | z = f(${axisA}, ${axisB})` : `2D | f(${axisA})`;
+
+  refs.detectedMode.textContent = modeText;
+  refs.expressionHint.textContent =
+    inference.parameterVars.length > 0
+      ? `Variabili extra rilevate: ${inference.parameterVars.join(", ")} (gestite come parametri).`
+      : "Nessun parametro extra: plotting diretto.";
+
+  setScaleSelectText(refs.xScale, axisA);
+  if (inference.mode === MODE_3D) {
+    setScaleSelectText(refs.yScale, axisB);
+    setScaleSelectText(refs.zScale, "z");
+  } else {
+    setScaleSelectText(refs.yScale, `f(${axisA})`);
+  }
+}
+
+function buildParameterScope(parameterVars) {
+  const scope = {};
+  parameterVars.forEach((name) => {
+    const value = safeNumber(parameterValues[name], 1);
+    parameterValues[name] = value;
+    scope[name] = value;
+  });
+  return scope;
+}
+
+function renderParameterInputs(parameterVars) {
+  if (!parameterVars.length) {
+    refs.paramGroup.style.display = "none";
+    refs.paramInputs.innerHTML = "";
+    return;
+  }
+
+  refs.paramGroup.style.display = "block";
+  refs.paramInputs.innerHTML = "";
+
+  parameterVars.forEach((name) => {
+    if (!(name in parameterValues)) {
+      parameterValues[name] = 1;
+    }
+
+    const row = document.createElement("div");
+    row.className = "param-row";
+
+    const label = document.createElement("label");
+    label.className = "param-name";
+    label.htmlFor = `param-${name}`;
+    label.textContent = name;
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.id = `param-${name}`;
+    input.className = "input";
+    input.value = String(parameterValues[name]);
+
+    input.addEventListener("input", () => {
+      parameterValues[name] = safeNumber(input.value, 1);
+    });
+
+    input.addEventListener("change", () => {
+      parameterValues[name] = safeNumber(input.value, 1);
+      renderPlot();
+    });
+
+    row.appendChild(label);
+    row.appendChild(input);
+    refs.paramInputs.appendChild(row);
+  });
+}
+
+function validateRanges(values, inference) {
+  if (values.xMin >= values.xMax) {
+    throw new Error(`${inference.axisVars[0]}: il minimo deve essere minore del massimo.`);
+  }
+
+  if (values.xScale === "log" && values.xMin <= 0) {
+    throw new Error(`Scala log su ${inference.axisVars[0]}: il minimo deve essere > 0.`);
+  }
+
+  if (inference.mode === MODE_3D) {
+    if (values.yMin >= values.yMax) {
+      throw new Error(`${inference.axisVars[1]}: il minimo deve essere minore del massimo.`);
+    }
+
+    if (values.yScale === "log" && values.yMin <= 0) {
+      throw new Error(`Scala log su ${inference.axisVars[1]}: il minimo deve essere > 0.`);
+    }
+  }
+}
+
+function plot2D(values, inference) {
+  const axis = inference.axisVars[0];
+  const xValues = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
+  const baseScope = buildParameterScope(inference.parameterVars);
+
+  let validCount = 0;
+  let positiveCount = 0;
+
+  const yValues = xValues.map((axisValue) => {
+    try {
+      const evaluated = toFiniteNumber(inference.compiled.evaluate({ ...baseScope, [axis]: axisValue }));
+      if (evaluated === null) return null;
+      validCount += 1;
+
+      if (values.yScale === "log") {
+        if (evaluated > 0) {
+          positiveCount += 1;
+          return evaluated;
+        }
+        return null;
+      }
+
+      return evaluated;
+    } catch {
+      return null;
+    }
   });
 
-  const is3d = mode === MODE_3D;
-  refs.yRangeGroup.style.display = is3d ? "block" : "none";
-  refs.colorGroup.style.display = is3d ? "block" : "none";
-  refs.zScale.style.display = is3d ? "block" : "none";
-  refs.expression.placeholder = is3d ? "Esempio 3D: sin(sqrt(x^2+y^2))" : "Esempio 2D: sin(x) + x^2/10";
-  refs.expressionHint.textContent = is3d ? "Usa x e y per i grafici 3D (z = f(x,y))." : "Usa x per i grafici 2D.";
-  refs.plotTitle.textContent = is3d ? "Grafico 3D" : "Grafico 2D";
+  if (validCount === 0) {
+    throw new Error("Nessun valore numerico valido in 2D. Controlla funzione/intervallo.");
+  }
+
+  if (values.yScale === "log" && positiveCount === 0) {
+    throw new Error("Con scala log sull'asse risultato servono valori positivi.");
+  }
+
+  const trace = {
+    x: xValues,
+    y: yValues,
+    type: "scattergl",
+    mode: "lines",
+    line: {
+      color: "#0b57d0",
+      width: 2.8,
+      shape: "spline",
+      smoothing: 1.05,
+    },
+    hovertemplate: `${axis}=%{x:.6g}<br>f=%{y:.6g}<extra></extra>`,
+  };
+
+  const layout = {
+    margin: { l: 46, r: 20, t: 14, b: 44 },
+    paper_bgcolor: "#fcfdff",
+    plot_bgcolor: "#fcfdff",
+    uirevision: "keep-view",
+    dragmode: "zoom",
+    xaxis: { title: axis, type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+    yaxis: { title: `f(${axis})`, type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+  };
+
+  const config = {
+    responsive: true,
+    displaylogo: false,
+    displayModeBar: true,
+    scrollZoom: true,
+    doubleClick: "reset+autosize",
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  };
+
+  return Plotly.react(refs.plot, [trace], layout, config);
+}
+
+function plot3D(values, inference) {
+  const xAxis = inference.axisVars[0];
+  const yAxis = inference.axisVars[1];
+
+  const xValues = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
+  const yValues = buildAxisValues(values.yMin, values.yMax, values.resolution, values.yScale);
+  const baseScope = buildParameterScope(inference.parameterVars);
+
+  let validCount = 0;
+  let positiveCount = 0;
+
+  const zValues = yValues.map((yValue) =>
+    xValues.map((xValue) => {
+      try {
+        const evaluated = toFiniteNumber(inference.compiled.evaluate({ ...baseScope, [xAxis]: xValue, [yAxis]: yValue }));
+        if (evaluated === null) return Number.NaN;
+        validCount += 1;
+
+        if (values.zScale === "log") {
+          if (evaluated > 0) {
+            positiveCount += 1;
+            return evaluated;
+          }
+          return Number.NaN;
+        }
+
+        return evaluated;
+      } catch {
+        return Number.NaN;
+      }
+    }),
+  );
+
+  if (validCount === 0) {
+    throw new Error("Nessun valore numerico valido in 3D. Controlla funzione/intervallo.");
+  }
+
+  if (values.zScale === "log" && positiveCount === 0) {
+    throw new Error("Con scala log su z servono valori positivi.");
+  }
+
+  const trace = {
+    type: "surface",
+    x: xValues,
+    y: yValues,
+    z: zValues,
+    colorscale: values.colorMap,
+    showscale: true,
+    connectgaps: false,
+    hovertemplate: `${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
+  };
+
+  const layout = {
+    margin: { l: 0, r: 0, t: 8, b: 0 },
+    paper_bgcolor: "#fcfdff",
+    uirevision: "keep-view",
+    scene: {
+      dragmode: "orbit",
+      xaxis: { title: xAxis, type: values.xScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+      yaxis: { title: yAxis, type: values.yScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+      zaxis: { title: "z", type: values.zScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+      aspectmode: "cube",
+      camera: { eye: { x: 1.6, y: 1.45, z: 0.95 } },
+    },
+  };
+
+  const config = {
+    responsive: true,
+    displaylogo: false,
+    displayModeBar: true,
+    scrollZoom: true,
+    doubleClick: "reset",
+  };
+
+  return Plotly.react(refs.plot, [trace], layout, config);
 }
 
 function applyState(state) {
@@ -194,161 +555,79 @@ function applyState(state) {
   refs.colorMap.value = state.colorMap;
 }
 
-function validateRanges(values, mode) {
-  if (values.xMin >= values.xMax) {
-    throw new Error("Intervallo x non valido: xMin deve essere minore di xMax.");
+function previewInference() {
+  try {
+    const inference = inferFromExpression(refs.expression.value);
+    currentInference = inference;
+    updateUiFromInference(inference);
+    renderParameterInputs(inference.parameterVars);
+  } catch {
+    // Ignore transient syntax errors while typing.
   }
-  if (mode === MODE_3D && values.yMin >= values.yMax) {
-    throw new Error("Intervallo y non valido: yMin deve essere minore di yMax.");
-  }
-}
-
-function plot2D(values) {
-  const x = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
-  const compiled = math.compile(values.expression);
-
-  const y = x.map((xVal) => {
-    try {
-      return toFiniteValue(compiled.evaluate({ x: xVal }));
-    } catch {
-      return null;
-    }
-  });
-
-  const trace = {
-    x,
-    y,
-    type: "scattergl",
-    mode: "lines",
-    line: {
-      color: "#0b57d0",
-      width: 2.7,
-      shape: "spline",
-      smoothing: 1.1,
-    },
-    hovertemplate: "x=%{x:.6g}<br>y=%{y:.6g}<extra></extra>",
-  };
-
-  const layout = {
-    margin: { l: 42, r: 20, t: 16, b: 42 },
-    paper_bgcolor: "#fcfdff",
-    plot_bgcolor: "#fcfdff",
-    xaxis: { title: "x", type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
-    yaxis: { title: "f(x)", type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
-    dragmode: "pan",
-  };
-
-  const config = {
-    responsive: true,
-    displaylogo: false,
-    scrollZoom: true,
-    modeBarButtonsToRemove: ["lasso2d", "select2d"],
-  };
-
-  return Plotly.react(refs.plot, [trace], layout, config);
-}
-
-function plot3D(values) {
-  const xValues = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
-  const yValues = buildAxisValues(values.yMin, values.yMax, values.resolution, values.yScale);
-  const compiled = math.compile(values.expression);
-
-  const z = yValues.map((yVal) =>
-    xValues.map((xVal) => {
-      try {
-        return toFiniteValue(compiled.evaluate({ x: xVal, y: yVal }));
-      } catch {
-        return null;
-      }
-    }),
-  );
-
-  const trace = {
-    type: "surface",
-    x: xValues,
-    y: yValues,
-    z,
-    colorscale: values.colorMap,
-    contours: {
-      z: {
-        show: true,
-        usecolormap: true,
-        highlightwidth: 1,
-      },
-    },
-    hovertemplate: "x=%{x:.5g}<br>y=%{y:.5g}<br>z=%{z:.5g}<extra></extra>",
-  };
-
-  const layout = {
-    margin: { l: 0, r: 0, t: 10, b: 0 },
-    paper_bgcolor: "#fcfdff",
-    scene: {
-      xaxis: { title: "x", type: values.xScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
-      yaxis: { title: "y", type: values.yScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
-      zaxis: { title: "z", type: values.zScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
-      aspectmode: "cube",
-      camera: { eye: { x: 1.6, y: 1.5, z: 0.95 } },
-    },
-  };
-
-  const config = {
-    responsive: true,
-    displaylogo: false,
-    scrollZoom: true,
-  };
-
-  return Plotly.react(refs.plot, [trace], layout, config);
 }
 
 async function renderPlot() {
   try {
     const values = readInputs();
-    validateRanges(values, currentMode);
-    if (!values.expression) throw new Error("Inserisci una funzione valida prima di plottare.");
+    const inference = inferFromExpression(values.expression);
+    currentInference = inference;
+
+    updateUiFromInference(inference);
+    renderParameterInputs(inference.parameterVars);
+    validateRanges(values, inference);
 
     setMessage("Rendering in corso...", "ok");
 
-    if (currentMode === MODE_3D) {
-      await plot3D(values);
+    if (inference.mode === MODE_3D) {
+      await plot3D(values, inference);
+      setMessage(`Grafico 3D aggiornato (${inference.axisVars[0]}, ${inference.axisVars[1]}).`, "ok");
     } else {
-      await plot2D(values);
+      await plot2D(values, inference);
+      setMessage(`Grafico 2D aggiornato (${inference.axisVars[0]}).`, "ok");
     }
-
-    setMessage("Grafico aggiornato.", "ok");
   } catch (error) {
     setMessage(error.message || "Errore durante il plotting.", "error");
   }
 }
 
 function resetAll() {
-  updateUiByMode(MODE_2D);
+  Object.keys(parameterValues).forEach((key) => {
+    delete parameterValues[key];
+  });
+
   applyState(initialState);
   setMessage("");
+  previewInference();
   renderPlot();
 }
 
 function loadRandomPreset() {
-  const options = presets[currentMode];
-  const choice = options[Math.floor(Math.random() * options.length)];
-  applyState({ ...initialState, ...choice });
+  const choice = presets[Math.floor(Math.random() * presets.length)];
+
+  applyState({
+    expression: choice.expression,
+    xMin: choice.xMin,
+    xMax: choice.xMax,
+    yMin: choice.yMin,
+    yMax: choice.yMax,
+    resolution: choice.resolution,
+    xScale: choice.xScale,
+    yScale: choice.yScale,
+    zScale: choice.zScale,
+    colorMap: choice.colorMap,
+  });
+
+  Object.keys(parameterValues).forEach((key) => {
+    delete parameterValues[key];
+  });
+
+  Object.entries(choice.params || {}).forEach(([name, value]) => {
+    parameterValues[name] = value;
+  });
+
+  previewInference();
   renderPlot();
 }
-
-refs.modeSegment.addEventListener("click", (event) => {
-  const button = event.target.closest(".segment");
-  if (!button) return;
-  const selectedMode = button.dataset.mode === MODE_3D ? MODE_3D : MODE_2D;
-  updateUiByMode(selectedMode);
-
-  if (selectedMode === MODE_2D && refs.expression.value.includes("y")) {
-    refs.expression.value = "sin(x)";
-  }
-  if (selectedMode === MODE_3D && !refs.expression.value.includes("y")) {
-    refs.expression.value = "sin(sqrt(x^2+y^2))";
-  }
-
-  renderPlot();
-});
 
 refs.plotBtn.addEventListener("click", renderPlot);
 refs.presetBtn.addEventListener("click", loadRandomPreset);
@@ -358,8 +637,16 @@ refs.expression.addEventListener("keydown", (event) => {
   if (event.key === "Enter") renderPlot();
 });
 
-window.addEventListener("resize", () => Plotly.Plots.resize(refs.plot));
+refs.expression.addEventListener("input", () => {
+  clearTimeout(expressionDebounceId);
+  expressionDebounceId = setTimeout(previewInference, 180);
+});
 
-updateUiByMode(MODE_2D);
+window.addEventListener("resize", () => {
+  if (!refs.plot || !refs.plot.data) return;
+  Plotly.Plots.resize(refs.plot);
+});
+
 applyState(initialState);
+previewInference();
 renderPlot();

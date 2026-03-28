@@ -15,8 +15,10 @@ Poi visita `http://localhost:8080`.
 
 ## Cosa puoi fare
 
+- Rilevamento automatico 2D/3D in base alle variabili presenti.
+- Input dinamico dei parametri extra (es. `a`, `b`, `k`) come costanti modificabili.
 - Plot 2D: `f(x)` con zoom/pan e scala lineare/logaritmica.
-- Plot 3D: `z = f(x,y)` come superficie interattiva.
+- Plot 3D: `z = f(x,y)` come superficie interattiva ruotabile con mouse/touch.
 - Controllo intervalli, risoluzione, color map.
 - Preset rapidi per testare funzioni semplici e complesse.
 
@@ -27,10 +29,10 @@ Le espressioni sono valutate con `math.js`.
 Esempi validi:
 
 - `sin(x)`
-- `x^3 - 4*x`
-- `log(x)`
-- `sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + 0.1)`
-- `exp(-(x^2 + y^2)/8)`
+- `y = x^3 - 4*x`
+- `z = x^2 + y^2`
+- `a*sin(b*x) + c`
+- `sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + k)`
 
 Funzioni utili: `sin`, `cos`, `tan`, `log`, `sqrt`, `exp`, `abs`, `pow` e molte altre supportate da math.js.
 
