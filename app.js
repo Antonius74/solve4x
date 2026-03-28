@@ -87,6 +87,7 @@ const presets = [
 
 const refs = {
   expression: document.getElementById("expression"),
+  expressionLatex: document.getElementById("expressionLatex"),
   expressionHint: document.getElementById("expressionHint"),
   detectedMode: document.getElementById("detectedMode"),
   xRangeLabel: document.getElementById("xRangeLabel"),
@@ -197,6 +198,34 @@ function normalizeExpressionInput(rawInput) {
   }
 
   return { formula: normalized, lhs: "" };
+}
+
+function renderLatexPreview(rawExpression) {
+  if (!refs.expressionLatex) return;
+
+  const fallbackText = rawExpression && rawExpression.trim() ? rawExpression : "f(x)";
+  if (!window.katex || typeof window.katex.render !== "function" || !window.math) {
+    refs.expressionLatex.classList.add("invalid");
+    refs.expressionLatex.textContent = fallbackText;
+    return;
+  }
+
+  try {
+    const normalized = normalizeExpressionInput(rawExpression || "");
+    const parsed = math.parse(normalized.formula);
+    const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
+    const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
+
+    refs.expressionLatex.classList.remove("invalid");
+    window.katex.render(fullTex, refs.expressionLatex, {
+      throwOnError: false,
+      displayMode: false,
+      strict: "ignore",
+    });
+  } catch {
+    refs.expressionLatex.classList.add("invalid");
+    refs.expressionLatex.textContent = fallbackText;
+  }
 }
 
 function collectVariableNames(parsed) {
@@ -556,6 +585,7 @@ function applyState(state) {
 }
 
 function previewInference() {
+  renderLatexPreview(refs.expression.value);
   try {
     const inference = inferFromExpression(refs.expression.value);
     currentInference = inference;

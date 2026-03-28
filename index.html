@@ -10,19 +10,27 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260328-1" />
+    <link rel="stylesheet" href="styles.css?v=20260328-2" />
     <script>
       (function () {
-        const appVersion = "20260328-1";
+        const appVersion = "20260328-2";
         const dependencySets = [
-          [
-            "https://cdn.jsdelivr.net/npm/mathjs@12.4.2/lib/browser/math.min.js",
-            "https://cdn.plot.ly/plotly-2.35.2.min.js",
-          ],
-          [
-            "https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js",
-            "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js",
-          ],
+          {
+            styles: ["https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"],
+            scripts: [
+              "https://cdn.jsdelivr.net/npm/mathjs@12.4.2/lib/browser/math.min.js",
+              "https://cdn.plot.ly/plotly-2.35.2.min.js",
+              "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+            ],
+          },
+          {
+            styles: ["https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css"],
+            scripts: [
+              "https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js",
+            ],
+          },
         ];
 
         function loadScript(src) {
@@ -33,6 +41,17 @@
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
+          });
+        }
+
+        function loadStylesheet(href) {
+          return new Promise((resolve, reject) => {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = href;
+            link.onload = resolve;
+            link.onerror = reject;
+            document.head.appendChild(link);
           });
         }
 
@@ -79,9 +98,13 @@
         }
 
         async function boot() {
-          for (const set of dependencySets) {
+          for (const dep of dependencySets) {
             try {
-              for (const src of set) {
+              for (const href of dep.styles) {
+                // eslint-disable-next-line no-await-in-loop
+                await loadStylesheet(href);
+              }
+              for (const src of dep.scripts) {
                 // eslint-disable-next-line no-await-in-loop
                 await loadScript(src);
               }
@@ -131,6 +154,7 @@
             placeholder="Esempio: sin(x), y=x^2, z=x^2+y^2, a*x^2+b"
             value="sin(x)"
           />
+          <div id="expressionLatex" class="latex-preview" aria-live="polite"></div>
           <p id="expressionHint" class="hint">Riconosce da solo variabili e dimensionalita.</p>
         </div>
 

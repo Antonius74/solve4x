@@ -143,6 +143,28 @@ h1 {
   box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.18);
 }
 
+.latex-preview {
+  margin-top: 8px;
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed rgba(31, 55, 92, 0.28);
+  background: rgba(247, 250, 255, 0.9);
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.latex-preview .katex {
+  font-size: 1.12rem;
+}
+
+.latex-preview.invalid {
+  color: #8f2634;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .row-2,
 .row-3 {
   display: grid;
