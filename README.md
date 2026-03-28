@@ -25,6 +25,10 @@ Il progetto e gia pronto per GitHub Pages tramite GitHub Actions.
    - `https://<username>.github.io/<nome-repo>/` (project page)
    - oppure `https://<username>.github.io/` se usi un repo `<username>.github.io`.
 
+Se vedi pagina ma grafico vuoto dopo un update:
+- fai hard refresh (`Cmd+Shift+R` su macOS, `Ctrl+F5` su Windows/Linux);
+- verifica che eventuali ad blocker/privacy extension non blocchino CDN JavaScript.
+
 Workflow incluso: `.github/workflows/deploy-pages.yml`.
 
 ## Cosa puoi fare
