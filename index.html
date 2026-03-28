@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MathPlot Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.2/lib/browser/math.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div class="bg-orb orb-a"></div>
+    <div class="bg-orb orb-b"></div>
+    <div class="bg-grid"></div>
+
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Material-style Function Plotter</p>
+        <h1>MathPlot Studio</h1>
+      </div>
+      <button id="presetBtn" class="btn btn-tonal">Preset esempio</button>
+    </header>
+
+    <main class="app-grid">
+      <section class="panel controls">
+        <div class="field-group">
+          <label class="field-label">Modalita rilevata automaticamente</label>
+          <p id="detectedMode" class="mode-chip">2D</p>
+        </div>
+
+        <div class="field-group">
+          <label for="expression" class="field-label">Funzione</label>
+          <input
+            id="expression"
+            type="text"
+            class="input"
+            placeholder="Esempio: sin(x), y=x^2, z=x^2+y^2, a*x^2+b"
+            value="sin(x)"
+          />
+          <p id="expressionHint" class="hint">Riconosce da solo variabili e dimensionalita.</p>
+        </div>
+
+        <div class="field-group">
+          <label id="xRangeLabel" class="field-label">Intervallo x</label>
+          <div class="row-2">
+            <input id="xMin" type="number" class="input" value="-10" step="0.1" />
+            <input id="xMax" type="number" class="input" value="10" step="0.1" />
+          </div>
+        </div>
+
+        <div class="field-group" id="yRangeGroup">
+          <label id="yRangeLabel" class="field-label">Intervallo y</label>
+          <div class="row-2">
+            <input id="yMin" type="number" class="input" value="-10" step="0.1" />
+            <input id="yMax" type="number" class="input" value="10" step="0.1" />
+          </div>
+        </div>
+
+        <div class="field-group" id="paramGroup">
+          <label class="field-label">Parametri rilevati</label>
+          <div id="paramInputs" class="param-list"></div>
+          <p class="hint">Le variabili extra vengono trattate come costanti modificabili.</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Risoluzione</label>
+          <input id="resolution" type="number" class="input" value="160" min="30" max="500" step="10" />
+          <p class="hint">2D: numero punti. 3D: griglia NxN (carico alto oltre 220).</p>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label">Scale assi</label>
+          <div class="row-3">
+            <select id="xScale" class="input">
+              <option value="linear">x lineare</option>
+              <option value="log">x log</option>
+            </select>
+            <select id="yScale" class="input">
+              <option value="linear">y lineare</option>
+              <option value="log">y log</option>
+            </select>
+            <select id="zScale" class="input">
+              <option value="linear">z lineare</option>
+              <option value="log">z log</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-group" id="colorGroup">
+          <label class="field-label">Color map (3D)</label>
+          <select id="colorMap" class="input">
+            <option value="Viridis">Viridis</option>
+            <option value="Turbo">Turbo</option>
+            <option value="Plasma">Plasma</option>
+            <option value="Inferno">Inferno</option>
+            <option value="Cividis">Cividis</option>
+            <option value="Electric">Electric</option>
+          </select>
+        </div>
+
+        <div class="action-row">
+          <button id="plotBtn" class="btn btn-primary">Plotta</button>
+          <button id="resetBtn" class="btn btn-outline">Reset</button>
+        </div>
+
+        <div id="message" class="message"></div>
+      </section>
+
+      <section class="panel plot-panel">
+        <div class="plot-toolbar">
+          <p class="plot-title" id="plotTitle">Grafico 2D</p>
+          <p class="hint">Pinch, zoom e pan supportati su mobile e desktop.</p>
+        </div>
+        <div id="plot" class="plot"></div>
+      </section>
+    </main>
+  </body>
+</html>
