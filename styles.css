@@ -63,10 +63,19 @@ body {
 
 .topbar {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   justify-content: space-between;
   align-items: flex-start;
+  flex-wrap: wrap;
   padding: 18px 16px 12px;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .eyebrow {
@@ -81,6 +90,39 @@ body {
 h1 {
   margin: 0;
   font-size: clamp(1.2rem, 3.8vw, 2.1rem);
+}
+
+.tab-switch {
+  display: inline-flex;
+  border: 1px solid rgba(31, 55, 92, 0.2);
+  background: rgba(255, 255, 255, 0.74);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+.tab-btn {
+  border: none;
+  background: transparent;
+  padding: 9px 14px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 700;
+  color: #385177;
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  color: #fff;
+  background: linear-gradient(140deg, var(--primary) 10%, var(--primary-strong) 100%);
+  box-shadow: 0 9px 20px rgba(11, 87, 208, 0.26);
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.active {
+  display: block;
 }
 
 .app-grid {
@@ -143,6 +185,12 @@ h1 {
   box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.18);
 }
 
+.textarea-input {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 .function-list {
   display: grid;
   gap: 8px;
@@ -155,45 +203,26 @@ h1 {
   align-items: center;
 }
 
-.latex-input-shell {
-  position: relative;
-}
-
-.latex-overlay {
-  position: absolute;
-  inset: 0;
-  padding: 11px 12px;
-  display: flex;
-  align-items: center;
-  overflow-x: auto;
-  overflow-y: hidden;
-  pointer-events: none;
+.function-mathfield {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid rgba(31, 55, 92, 0.24);
   border-radius: var(--radius-md);
-  z-index: 1;
+  background: var(--surface-strong);
+  padding: 10px 12px;
+  font-size: 1.1rem;
+  --caret-color: #1b1f2a;
+  --selection-background-color: rgba(11, 87, 208, 0.18);
+  --keyboard-zindex: 3000;
 }
 
-.latex-overlay .katex {
-  font-size: 1.12rem;
-  white-space: nowrap;
+.function-mathfield:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.18);
 }
 
-.function-input {
-  position: relative;
-  z-index: 2;
-  background: transparent;
-}
-
-.latex-input-shell.latex-active .function-input {
-  color: transparent;
-  caret-color: #1e2530;
-}
-
-.latex-input-shell.invalid .function-input {
-  color: #8f2634;
-  caret-color: #8f2634;
-}
-
-.latex-input-shell.invalid .latex-overlay {
+.function-mathfield::part(virtual-keyboard-toggle),
+.function-mathfield::part(menu-toggle) {
   display: none;
 }
 
@@ -228,33 +257,6 @@ h1 {
 
 .row-3 {
   grid-template-columns: 1fr;
-}
-
-.segmented {
-  display: inline-flex;
-  width: 100%;
-  border: 1px solid rgba(31, 55, 92, 0.24);
-  border-radius: 999px;
-  padding: 4px;
-  background: rgba(255, 255, 255, 0.8);
-}
-
-.segment {
-  flex: 1;
-  border: none;
-  border-radius: 999px;
-  padding: 9px 12px;
-  font: inherit;
-  font-weight: 700;
-  background: transparent;
-  color: #3a4963;
-  cursor: pointer;
-}
-
-.segment.active {
-  background: var(--primary);
-  color: #fff;
-  box-shadow: 0 9px 20px rgba(11, 87, 208, 0.28);
 }
 
 .hint {
@@ -297,6 +299,7 @@ h1 {
 .action-row {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .param-list {
@@ -362,18 +365,30 @@ h1 {
   border: 1px solid rgba(31, 55, 92, 0.15);
 }
 
+.linear-output {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(31, 55, 92, 0.2);
+  background: rgba(250, 252, 255, 0.95);
+  font-size: 0.88rem;
+  color: #243650;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+
 @media (min-width: 900px) {
   .topbar {
     padding: 26px 28px 12px;
   }
 
   .app-grid {
-    grid-template-columns: minmax(320px, 380px) 1fr;
+    grid-template-columns: minmax(340px, 420px) 1fr;
     padding: 0 24px 24px;
   }
 
   .controls {
-    max-height: calc(100vh - 108px);
+    max-height: calc(100vh - 118px);
     overflow: auto;
   }
 
@@ -382,7 +397,7 @@ h1 {
   }
 
   .plot-panel {
-    min-height: calc(100vh - 110px);
+    min-height: calc(100vh - 118px);
   }
 
   .plot {

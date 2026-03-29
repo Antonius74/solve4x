@@ -10,25 +10,29 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260329-1" />
+    <link rel="stylesheet" href="styles.css?v=20260329-3" />
     <script>
       (function () {
-        const appVersion = "20260329-1";
+        const appVersion = "20260329-3";
         const dependencySets = [
           {
-            styles: ["https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"],
+            styles: ["https://cdn.jsdelivr.net/npm/mathlive@0.109.0/mathlive-fonts.css"],
             scripts: [
-              "https://cdn.jsdelivr.net/npm/mathjs@12.4.2/lib/browser/math.min.js",
+              "https://cdn.jsdelivr.net/npm/mathjs@15.1.1/lib/browser/math.min.js",
               "https://cdn.plot.ly/plotly-2.35.2.min.js",
-              "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js",
+              "https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js",
+              "https://cdn.jsdelivr.net/npm/function-plot@1.25.3/dist/function-plot.js",
+              "https://cdn.jsdelivr.net/npm/mathlive@0.109.0/mathlive.min.js",
             ],
           },
           {
-            styles: ["https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css"],
+            styles: ["https://unpkg.com/mathlive@0.109.0/mathlive-fonts.css"],
             scripts: [
-              "https://cdnjs.cloudflare.com/ajax/libs/mathjs/12.4.2/math.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/mathjs/15.1.1/math.min.js",
               "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js",
-              "https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js",
+              "https://cdnjs.cloudflare.com/ajax/libs/function-plot/1.25.1/function-plot.min.js",
+              "https://unpkg.com/mathlive@0.109.0/mathlive.min.js",
             ],
           },
         ];
@@ -57,7 +61,7 @@
 
         function showBootError(message) {
           window.addEventListener("DOMContentLoaded", () => {
-            const box = document.getElementById("message");
+            const box = document.getElementById("message") || document.getElementById("laMessage");
             if (!box) return;
             box.className = "message error";
             box.textContent = message;
@@ -66,7 +70,7 @@
 
         function showRuntimeError(message) {
           const write = () => {
-            const box = document.getElementById("message");
+            const box = document.getElementById("message") || document.getElementById("laMessage");
             if (!box) return;
             box.className = "message error";
             box.textContent = `Errore runtime: ${message}`;
@@ -117,7 +121,7 @@
           }
 
           showBootError(
-            "Impossibile caricare le librerie del grafico. Fai hard refresh (Cmd+Shift+R) o disattiva eventuali blocchi contenuti."
+            "Impossibile caricare le librerie. Fai hard refresh (Cmd+Shift+R) o disattiva eventuali blocchi contenuti."
           );
         }
 
@@ -132,99 +136,154 @@
 
     <header class="topbar">
       <div>
-        <p class="eyebrow">antz Function Plotter</p>
+        <p class="eyebrow">Math Workspace</p>
         <h1>solve4x</h1>
       </div>
-      <button id="presetBtn" class="btn btn-tonal">Preset esempio</button>
+      <div class="topbar-right">
+        <div id="mainTabs" class="tab-switch">
+          <button class="tab-btn active" data-tab="functions" type="button">Funzioni</button>
+          <button class="tab-btn" data-tab="linear" type="button">Algebra Lineare</button>
+        </div>
+        <button id="presetBtn" class="btn btn-tonal" type="button">Preset esempio</button>
+      </div>
     </header>
 
-    <main class="app-grid">
-      <section class="panel controls">
-        <div class="field-group">
-          <label class="field-label">Modalita rilevata automaticamente</label>
-          <p id="detectedMode" class="mode-chip">2D</p>
-        </div>
-
-        <div class="field-group">
-          <label class="field-label">Funzione</label>
-          <div id="functionList" class="function-list" aria-live="polite"></div>
-          <button id="addFunctionBtn" class="btn btn-outline add-function-btn" type="button">+ Aggiungi funzione</button>
-          <p id="expressionHint" class="hint">Ogni funzione ha il suo textbox con rendering LaTeX live.</p>
-        </div>
-
-        <div class="field-group">
-          <label id="xRangeLabel" class="field-label">Intervallo x</label>
-          <div class="row-2">
-            <input id="xMin" type="number" class="input" value="-10" step="0.1" />
-            <input id="xMax" type="number" class="input" value="10" step="0.1" />
+    <section id="functionsTab" class="tab-panel active">
+      <div class="app-grid">
+        <section class="panel controls">
+          <div class="field-group">
+            <label class="field-label">Modalita rilevata automaticamente</label>
+            <p id="detectedMode" class="mode-chip">2D</p>
           </div>
-        </div>
 
-        <div class="field-group" id="yRangeGroup">
-          <label id="yRangeLabel" class="field-label">Intervallo y</label>
-          <div class="row-2">
-            <input id="yMin" type="number" class="input" value="-10" step="0.1" />
-            <input id="yMax" type="number" class="input" value="10" step="0.1" />
+          <div class="field-group">
+            <label class="field-label">Funzioni</label>
+            <div id="functionList" class="function-list" aria-live="polite"></div>
+            <button id="addFunctionBtn" class="btn btn-outline add-function-btn" type="button">+ Aggiungi funzione</button>
+            <p id="expressionHint" class="hint">Input matematico in latex nel textbox.</p>
           </div>
-        </div>
 
-        <div class="field-group" id="paramGroup">
-          <label class="field-label">Parametri rilevati</label>
-          <div id="paramInputs" class="param-list"></div>
-          <p class="hint">Le variabili extra vengono trattate come costanti modificabili.</p>
-        </div>
+          <div class="field-group">
+            <label id="xRangeLabel" class="field-label">Intervallo x</label>
+            <div class="row-2">
+              <input id="xMin" type="number" class="input" value="-10" step="0.1" />
+              <input id="xMax" type="number" class="input" value="10" step="0.1" />
+            </div>
+          </div>
 
-        <div class="field-group">
-          <label class="field-label">Risoluzione</label>
-          <input id="resolution" type="number" class="input" value="160" min="30" max="500" step="10" />
-          <p class="hint">2D: numero punti. 3D: griglia NxN (carico alto oltre 220).</p>
-        </div>
+          <div class="field-group" id="yRangeGroup">
+            <label id="yRangeLabel" class="field-label">Intervallo y</label>
+            <div class="row-2">
+              <input id="yMin" type="number" class="input" value="-10" step="0.1" />
+              <input id="yMax" type="number" class="input" value="10" step="0.1" />
+            </div>
+          </div>
 
-        <div class="field-group">
-          <label class="field-label">Scale assi</label>
-          <div class="row-3">
-            <select id="xScale" class="input">
-              <option value="linear">x lineare</option>
-              <option value="log">x log</option>
-            </select>
-            <select id="yScale" class="input">
-              <option value="linear">y lineare</option>
-              <option value="log">y log</option>
-            </select>
-            <select id="zScale" class="input">
-              <option value="linear">z lineare</option>
-              <option value="log">z log</option>
+          <div class="field-group" id="paramGroup">
+            <label class="field-label">Parametri rilevati</label>
+            <div id="paramInputs" class="param-list"></div>
+            <p class="hint">Le variabili extra vengono trattate come costanti modificabili.</p>
+          </div>
+
+          <div class="field-group" id="resolutionGroup">
+            <label id="resolutionLabel" class="field-label">Densita griglia 3D</label>
+            <input id="resolution" type="number" class="input" value="120" min="25" max="300" step="5" />
+            <p id="resolutionHint" class="hint">Usato solo in 3D. In 2D il campionamento e adattivo.</p>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Scale assi</label>
+            <div class="row-3">
+              <select id="xScale" class="input">
+                <option value="linear">x lineare</option>
+                <option value="log">x log</option>
+              </select>
+              <select id="yScale" class="input">
+                <option value="linear">y lineare</option>
+                <option value="log">y log</option>
+              </select>
+              <select id="zScale" class="input">
+                <option value="linear">z lineare</option>
+                <option value="log">z log</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field-group" id="colorGroup">
+            <label class="field-label">Color map (3D)</label>
+            <select id="colorMap" class="input">
+              <option value="Viridis">Viridis</option>
+              <option value="Turbo">Turbo</option>
+              <option value="Plasma">Plasma</option>
+              <option value="Inferno">Inferno</option>
+              <option value="Cividis">Cividis</option>
+              <option value="Electric">Electric</option>
             </select>
           </div>
-        </div>
 
-        <div class="field-group" id="colorGroup">
-          <label class="field-label">Color map (3D)</label>
-          <select id="colorMap" class="input">
-            <option value="Viridis">Viridis</option>
-            <option value="Turbo">Turbo</option>
-            <option value="Plasma">Plasma</option>
-            <option value="Inferno">Inferno</option>
-            <option value="Cividis">Cividis</option>
-            <option value="Electric">Electric</option>
-          </select>
-        </div>
+          <div class="action-row">
+            <button id="plotBtn" class="btn btn-primary" type="button">Plotta</button>
+            <button id="resetBtn" class="btn btn-outline" type="button">Reset</button>
+          </div>
 
-        <div class="action-row">
-          <button id="plotBtn" class="btn btn-primary">Plotta</button>
-          <button id="resetBtn" class="btn btn-outline">Reset</button>
-        </div>
+          <div id="message" class="message"></div>
+        </section>
 
-        <div id="message" class="message"></div>
-      </section>
+        <section class="panel plot-panel">
+          <div class="plot-toolbar">
+            <p class="plot-title" id="plotTitle">Grafico 2D</p>
+            <p class="hint">Zoom, pan e rotazione supportati su desktop e mobile.</p>
+          </div>
+          <div id="plot" class="plot"></div>
+        </section>
+      </div>
+    </section>
 
-      <section class="panel plot-panel">
-        <div class="plot-toolbar">
-          <p class="plot-title" id="plotTitle">Grafico 2D</p>
-          <p class="hint">Pinch, zoom e pan supportati su mobile e desktop.</p>
-        </div>
-        <div id="plot" class="plot"></div>
-      </section>
-    </main>
+    <section id="linearTab" class="tab-panel">
+      <div class="app-grid">
+        <section class="panel controls">
+          <div class="field-group">
+            <label class="field-label">Dimensione spazio</label>
+            <select id="laDimension" class="input">
+              <option value="2">2D</option>
+              <option value="3">3D</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Matrice A</label>
+            <textarea id="laMatrixA" class="input textarea-input">1 2; 0 1</textarea>
+            <p class="hint">Righe con ';' o nuova riga. Colonne con spazio o virgola.</p>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Vettore v (trasformazione)</label>
+            <input id="laVectorV" class="input" value="1, 1" />
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Vettore b (sistema Ax=b)</label>
+            <input id="laVectorB" class="input" value="2, 1" />
+          </div>
+
+          <div class="action-row">
+            <button id="laApplyBtn" class="btn btn-primary" type="button">Applica</button>
+            <button id="laExampleBtn" class="btn btn-outline" type="button">Esempio</button>
+            <button id="laResetBtn" class="btn btn-outline" type="button">Reset</button>
+          </div>
+
+          <div id="laMessage" class="message"></div>
+        </section>
+
+        <section class="panel plot-panel">
+          <div class="plot-toolbar">
+            <p class="plot-title">Algebra Lineare</p>
+            <p class="hint">Trasformazioni, sistemi lineari e visualizzazione vettoriale.</p>
+          </div>
+          <div id="linearPlot" class="plot"></div>
+          <div id="linearOutput" class="linear-output"></div>
+        </section>
+      </div>
+    </section>
   </body>
 </html>

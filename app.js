@@ -1,5 +1,7 @@
 const MODE_2D = "2d";
 const MODE_3D = "3d";
+const TAB_FUNCTIONS = "functions";
+const TAB_LINEAR = "linear";
 
 const RESERVED_IDENTIFIERS = new Set([
   "e",
@@ -17,14 +19,17 @@ const RESERVED_IDENTIFIERS = new Set([
   "undefined",
 ]);
 
+const LINE_COLORS = ["#0b57d0", "#e07a16", "#188038", "#b3261e", "#7b1fa2", "#006c73", "#7f5539", "#37474f"];
+const SURFACE_COLOR_SCALES = ["Viridis", "Turbo", "Plasma", "Inferno", "Cividis", "Electric"];
+
 const presets = [
   {
-    expression: "sin(x)",
+    expressions: ["sin(x)"],
     xMin: -10,
     xMax: 10,
     yMin: -10,
     yMax: 10,
-    resolution: 220,
+    resolution: 120,
     xScale: "linear",
     yScale: "linear",
     zScale: "linear",
@@ -32,7 +37,20 @@ const presets = [
     params: {},
   },
   {
-    expression: "z = x^2 + y^2",
+    expressions: ["sin(x)", "0.5*cos(2*x)", "x^2/20"],
+    xMin: -12,
+    xMax: 12,
+    yMin: -10,
+    yMax: 10,
+    resolution: 120,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Viridis",
+    params: {},
+  },
+  {
+    expressions: ["z = x^2 + y^2"],
     xMin: -8,
     xMax: 8,
     yMin: -8,
@@ -45,54 +63,45 @@ const presets = [
     params: {},
   },
   {
-    expression: "a * sin(b * x) * exp(-abs(x)/c)",
-    xMin: -14,
-    xMax: 14,
+    expressions: ["sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + k)", "0.2*(x^2-y^2)"],
+    xMin: -10,
+    xMax: 10,
     yMin: -10,
     yMax: 10,
-    resolution: 260,
-    xScale: "linear",
-    yScale: "linear",
-    zScale: "linear",
-    colorMap: "Viridis",
-    params: { a: 1, b: 4, c: 3 },
-  },
-  {
-    expression: "sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + k)",
-    xMin: -12,
-    xMax: 12,
-    yMin: -12,
-    yMax: 12,
-    resolution: 120,
+    resolution: 130,
     xScale: "linear",
     yScale: "linear",
     zScale: "linear",
     colorMap: "Plasma",
     params: { k: 0.1 },
   },
-  {
-    expression: "log(x)",
-    xMin: 0.1,
-    xMax: 30,
-    yMin: -10,
-    yMax: 10,
-    resolution: 240,
-    xScale: "log",
-    yScale: "linear",
-    zScale: "linear",
-    colorMap: "Cividis",
-    params: {},
-  },
 ];
 
-const LINE_COLORS = ["#0b57d0", "#e07a16", "#188038", "#b3261e", "#7b1fa2", "#006c73", "#7f5539", "#37474f"];
-const SURFACE_COLOR_SCALES = ["Viridis", "Turbo", "Plasma", "Inferno", "Cividis", "Electric"];
+const linearExamples = {
+  2: {
+    matrixA: "1 2; 0 1",
+    vectorV: "1, 1",
+    vectorB: "2, 1",
+  },
+  3: {
+    matrixA: "1 0 1; 0 2 0; 0 0 1",
+    vectorV: "1, 1, 1",
+    vectorB: "2, 1, 3",
+  },
+};
 
 const refs = {
+  mainTabs: document.getElementById("mainTabs"),
+  functionsTab: document.getElementById("functionsTab"),
+  linearTab: document.getElementById("linearTab"),
+
+  presetBtn: document.getElementById("presetBtn"),
+
   functionList: document.getElementById("functionList"),
   addFunctionBtn: document.getElementById("addFunctionBtn"),
   expressionHint: document.getElementById("expressionHint"),
   detectedMode: document.getElementById("detectedMode"),
+
   xRangeLabel: document.getElementById("xRangeLabel"),
   yRangeLabel: document.getElementById("yRangeLabel"),
   xMin: document.getElementById("xMin"),
@@ -100,43 +109,63 @@ const refs = {
   yMin: document.getElementById("yMin"),
   yMax: document.getElementById("yMax"),
   yRangeGroup: document.getElementById("yRangeGroup"),
+
   paramGroup: document.getElementById("paramGroup"),
   paramInputs: document.getElementById("paramInputs"),
+
+  resolutionGroup: document.getElementById("resolutionGroup"),
+  resolutionLabel: document.getElementById("resolutionLabel"),
+  resolutionHint: document.getElementById("resolutionHint"),
   resolution: document.getElementById("resolution"),
+
   xScale: document.getElementById("xScale"),
   yScale: document.getElementById("yScale"),
   zScale: document.getElementById("zScale"),
   colorMap: document.getElementById("colorMap"),
   colorGroup: document.getElementById("colorGroup"),
+
   plotBtn: document.getElementById("plotBtn"),
   resetBtn: document.getElementById("resetBtn"),
-  presetBtn: document.getElementById("presetBtn"),
+
   plotTitle: document.getElementById("plotTitle"),
   plot: document.getElementById("plot"),
   message: document.getElementById("message"),
+
+  laDimension: document.getElementById("laDimension"),
+  laMatrixA: document.getElementById("laMatrixA"),
+  laVectorV: document.getElementById("laVectorV"),
+  laVectorB: document.getElementById("laVectorB"),
+  laApplyBtn: document.getElementById("laApplyBtn"),
+  laExampleBtn: document.getElementById("laExampleBtn"),
+  laResetBtn: document.getElementById("laResetBtn"),
+  laPlot: document.getElementById("linearPlot"),
+  laOutput: document.getElementById("linearOutput"),
+  laMessage: document.getElementById("laMessage"),
 };
 
-const initialState = {
-  expression: "sin(x)",
+const initialFunctionState = {
+  expressions: ["sin(x)"],
   xMin: -10,
   xMax: 10,
   yMin: -10,
   yMax: 10,
-  resolution: 160,
+  resolution: 120,
   xScale: "linear",
   yScale: "linear",
   zScale: "linear",
   colorMap: "Viridis",
 };
 
+let activeTab = TAB_FUNCTIONS;
 let expressionDebounceId;
-let currentInference = null;
+let resizeDebounceId;
 const parameterValues = {};
 
-function setMessage(text, type = "") {
-  refs.message.className = "message";
-  if (type) refs.message.classList.add(type);
-  refs.message.textContent = text;
+function setMessage(target, text, type = "") {
+  if (!target) return;
+  target.className = "message";
+  if (type) target.classList.add(type);
+  target.textContent = text;
 }
 
 function safeNumber(value, fallback) {
@@ -144,50 +173,24 @@ function safeNumber(value, fallback) {
   return Number.isFinite(n) ? n : fallback;
 }
 
-function linspaceLinear(min, max, count) {
-  if (count <= 1) return [min];
-  const step = (max - min) / (count - 1);
-  return Array.from({ length: count }, (_, i) => min + i * step);
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function linspaceLog(min, max, count) {
-  if (min <= 0 || max <= 0) {
-    throw new Error("La scala log richiede limiti maggiori di zero.");
-  }
-  if (count <= 1) return [min];
-  const minLog = Math.log10(min);
-  const maxLog = Math.log10(max);
-  const step = (maxLog - minLog) / (count - 1);
-  return Array.from({ length: count }, (_, i) => 10 ** (minLog + i * step));
-}
-
-function buildAxisValues(min, max, count, scaleType) {
-  if (scaleType === "log") return linspaceLog(min, max, count);
-  return linspaceLinear(min, max, count);
-}
-
-function toFiniteNumber(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : null;
-
-  if (value && typeof value.toNumber === "function") {
-    const asNumber = value.toNumber();
-    return Number.isFinite(asNumber) ? asNumber : null;
-  }
-
-  if (value && typeof value.re === "number" && typeof value.im === "number") {
-    if (Math.abs(value.im) > 1e-9) return null;
-    return Number.isFinite(value.re) ? value.re : null;
-  }
-
-  return null;
+function replaceAxisVarWithX(formula, axisVar) {
+  if (!axisVar || axisVar === "x") return formula;
+  const pattern = new RegExp(`\\b${escapeRegExp(axisVar)}\\b`, "g");
+  return formula.replace(pattern, "x");
 }
 
 function normalizeExpressionInput(rawInput) {
-  const normalized = rawInput
+  const normalized = String(rawInput || "")
     .trim()
     .replace(/[−–]/g, "-")
+    .replace(/·/g, "*")
     .replace(/×/g, "*")
     .replace(/÷/g, "/")
+    .replace(/\s+/g, " ")
     .replace(/;+$/g, "");
 
   if (!normalized) throw new Error("Inserisci una funzione valida.");
@@ -203,6 +206,17 @@ function normalizeExpressionInput(rawInput) {
   return { formula: normalized, lhs: "" };
 }
 
+function expressionToLatex(expression) {
+  try {
+    const normalized = normalizeExpressionInput(expression);
+    const parsed = math.parse(normalized.formula);
+    const tex = parsed.toTex({ parenthesis: "auto", implicit: "show" });
+    return normalized.lhs ? `${normalized.lhs}=${tex}` : tex;
+  } catch {
+    return String(expression || "");
+  }
+}
+
 function splitExpressions(rawInput) {
   return String(rawInput || "")
     .split(/\n|;/)
@@ -210,79 +224,65 @@ function splitExpressions(rawInput) {
     .filter(Boolean);
 }
 
-function getFunctionInputs() {
-  return [...refs.functionList.querySelectorAll(".function-input")];
+function customMathFieldAvailable() {
+  return typeof customElements !== "undefined" && !!customElements.get("math-field");
+}
+
+function createFunctionEditor(initialExpression) {
+  if (customMathFieldAvailable()) {
+    const field = document.createElement("math-field");
+    field.className = "function-mathfield function-editor";
+    field.setAttribute("virtual-keyboard-mode", "manual");
+    field.setAttribute("smart-fence", "true");
+    field.value = expressionToLatex(initialExpression);
+    return field;
+  }
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "input function-editor";
+  input.value = initialExpression;
+  input.placeholder = "Esempio: sin(x)";
+  return input;
+}
+
+function getFunctionEditorValue(editor) {
+  if (!editor) return "";
+
+  if (editor.tagName === "MATH-FIELD" && typeof editor.getValue === "function") {
+    return String(editor.getValue("ascii-math") || "")
+      .replace(/[−–]/g, "-")
+      .replace(/×/g, "*")
+      .replace(/÷/g, "/")
+      .trim();
+  }
+
+  return String(editor.value || "").trim();
+}
+
+function getFunctionEditors() {
+  return [...refs.functionList.querySelectorAll(".function-editor")];
 }
 
 function readExpressionList() {
-  return getFunctionInputs()
-    .map((input) => input.value.trim())
+  return getFunctionEditors()
+    .map((editor) => getFunctionEditorValue(editor))
     .filter(Boolean);
 }
 
 function updateRemoveButtonsState() {
-  const removeButtons = [...refs.functionList.querySelectorAll(".function-remove")];
-  const disabled = removeButtons.length <= 1;
-  removeButtons.forEach((button) => {
+  const buttons = [...refs.functionList.querySelectorAll(".function-remove")];
+  const disabled = buttons.length <= 1;
+  buttons.forEach((button) => {
     button.disabled = disabled;
   });
 }
 
-function renderInlineLatex(shell, expression) {
-  const overlay = shell.querySelector(".latex-overlay");
-  if (!overlay) return;
-
-  overlay.innerHTML = "";
-  shell.classList.remove("latex-active", "invalid");
-
-  const text = String(expression || "").trim();
-  if (!text) return;
-
-  if (!window.katex || typeof window.katex.render !== "function" || !window.math) {
-    return;
-  }
-
-  try {
-    const normalized = normalizeExpressionInput(text);
-    const parsed = math.parse(normalized.formula);
-    const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
-    const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
-
-    window.katex.render(fullTex, overlay, {
-      throwOnError: false,
-      displayMode: false,
-      strict: "ignore",
-    });
-    shell.classList.add("latex-active");
-  } catch {
-    shell.classList.add("invalid");
-  }
-}
-
-function refreshLatexForAllInputs() {
-  getFunctionInputs().forEach((input) => {
-    const shell = input.closest(".latex-input-shell");
-    if (!shell) return;
-    renderInlineLatex(shell, input.value);
-  });
-}
-
-function addFunctionInput(initialValue = "", focusInput = false) {
+function addFunctionInput(initialExpression = "", focus = false) {
   const row = document.createElement("div");
   row.className = "function-row";
 
-  const shell = document.createElement("div");
-  shell.className = "latex-input-shell";
-
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "input function-input";
-  input.placeholder = "Esempio: sin(x), z=x^2+y^2";
-  input.value = initialValue;
-
-  const overlay = document.createElement("div");
-  overlay.className = "latex-overlay";
-  overlay.setAttribute("aria-hidden", "true");
+  const editor = createFunctionEditor(initialExpression);
 
   const removeButton = document.createElement("button");
   removeButton.type = "button";
@@ -290,30 +290,25 @@ function addFunctionInput(initialValue = "", focusInput = false) {
   removeButton.title = "Rimuovi funzione";
   removeButton.textContent = "−";
 
-  shell.appendChild(input);
-  shell.appendChild(overlay);
-  row.appendChild(shell);
+  row.appendChild(editor);
   row.appendChild(removeButton);
   refs.functionList.appendChild(row);
 
-  renderInlineLatex(shell, input.value);
   updateRemoveButtonsState();
 
-  if (focusInput) {
-    input.focus();
-    input.select();
+  if (focus) {
+    setTimeout(() => {
+      if (typeof editor.focus === "function") editor.focus();
+    }, 0);
   }
 }
 
-function setFunctionExpressions(expressions, focusFirst = false) {
+function setFunctionExpressions(expressions) {
   refs.functionList.innerHTML = "";
-  const parsedExpressions = Array.isArray(expressions)
-    ? expressions.map((item) => String(item).trim()).filter(Boolean)
-    : splitExpressions(expressions);
-
-  const items = parsedExpressions.length ? parsedExpressions : ["sin(x)"];
-  items.forEach((value, index) => addFunctionInput(value, focusFirst && index === 0));
-  refreshLatexForAllInputs();
+  const items = Array.isArray(expressions) ? expressions : splitExpressions(expressions);
+  const sanitized = items.map((item) => String(item).trim()).filter(Boolean);
+  const finalItems = sanitized.length ? sanitized : ["sin(x)"];
+  finalItems.forEach((expression) => addFunctionInput(expression, false));
 }
 
 function collectVariableNames(parsed) {
@@ -321,41 +316,55 @@ function collectVariableNames(parsed) {
   const calledFunctions = new Set();
 
   parsed.traverse((node) => {
-    if (node && node.isSymbolNode) {
-      symbols.add(node.name);
-    }
-
-    if (node && node.isFunctionNode && node.fn && node.fn.isSymbolNode) {
-      calledFunctions.add(node.fn.name);
-    }
+    if (node && node.isSymbolNode) symbols.add(node.name);
+    if (node && node.isFunctionNode && node.fn && node.fn.isSymbolNode) calledFunctions.add(node.fn.name);
   });
 
   return [...symbols]
     .filter((name) => !calledFunctions.has(name))
     .filter((name) => !RESERVED_IDENTIFIERS.has(name))
     .sort((a, b) => {
-      const priority = (name) => {
+      const rank = (name) => {
         if (name === "x") return 0;
         if (name === "y") return 1;
         return 9;
       };
-      return priority(a) - priority(b) || a.localeCompare(b);
+      return rank(a) - rank(b) || a.localeCompare(b);
     });
 }
 
-function inferAxes(variableNames) {
-  if (variableNames.length === 0) {
-    return { mode: MODE_2D, axisVars: ["x"] };
+function inferAxes(variableNames, lhs = "") {
+  const hasX = variableNames.includes("x");
+  const hasY = variableNames.includes("y");
+
+  const firstNonY = variableNames.find((name) => name !== "y");
+  const fallback2DAxis = hasX ? "x" : firstNonY || variableNames[0] || "x";
+
+  if (lhs === "z") {
+    if (hasX || hasY) {
+      const axisA = hasX ? "x" : firstNonY || "x";
+      const axisB = hasY ? "y" : axisA === "x" ? "y" : "x";
+      return { mode: MODE_3D, axisVars: [axisA, axisB] };
+    }
+    if (variableNames.length >= 2) {
+      return { mode: MODE_3D, axisVars: [variableNames[0], variableNames[1]] };
+    }
+    if (variableNames.length === 1) {
+      const axisA = variableNames[0];
+      return { mode: MODE_3D, axisVars: [axisA, axisA === "x" ? "y" : "x"] };
+    }
+    return { mode: MODE_3D, axisVars: ["x", "y"] };
   }
 
-  if (variableNames.length === 1) {
-    return { mode: MODE_2D, axisVars: [variableNames[0]] };
+  if (lhs === "y") {
+    return { mode: MODE_2D, axisVars: [fallback2DAxis] };
   }
 
-  const first = variableNames.includes("x") ? "x" : variableNames[0];
-  const second = first !== "y" && variableNames.includes("y") ? "y" : variableNames.find((name) => name !== first);
+  if (hasX && hasY) {
+    return { mode: MODE_3D, axisVars: ["x", "y"] };
+  }
 
-  return { mode: MODE_3D, axisVars: [first, second] };
+  return { mode: MODE_2D, axisVars: [fallback2DAxis] };
 }
 
 function inferFromExpression(expressionInput) {
@@ -369,13 +378,12 @@ function inferFromExpression(expressionInput) {
     if (detail.includes("Unexpected operator ,")) {
       throw new Error("Sintassi non valida: usa un textbox per funzione (bottone + Aggiungi funzione), non la virgola.");
     }
-    throw new Error(`Sintassi non valida: ${error.message}`);
+    throw new Error(`Sintassi non valida: ${detail}`);
   }
 
   const variables = collectVariableNames(parsed);
-  const axisInfo = inferAxes(variables);
+  const axisInfo = inferAxes(variables, normalized.lhs);
   const axisVars = axisInfo.axisVars.filter(Boolean);
-
   const parameterVars = variables.filter((name) => !axisVars.includes(name));
 
   return {
@@ -389,13 +397,12 @@ function inferFromExpression(expressionInput) {
   };
 }
 
-function inferMultipleExpressions(rawExpressionInput) {
-  const expressions = Array.isArray(rawExpressionInput)
-    ? rawExpressionInput.map((item) => String(item).trim()).filter(Boolean)
-    : splitExpressions(rawExpressionInput);
-  if (!expressions.length) {
-    throw new Error("Inserisci almeno una funzione.");
-  }
+function inferMultipleExpressions(expressionsRaw) {
+  const expressions = Array.isArray(expressionsRaw)
+    ? expressionsRaw.map((item) => String(item).trim()).filter(Boolean)
+    : splitExpressions(expressionsRaw);
+
+  if (!expressions.length) throw new Error("Inserisci almeno una funzione.");
 
   const functions = expressions.map((expression) => {
     const inferred = inferFromExpression(expression);
@@ -403,33 +410,30 @@ function inferMultipleExpressions(rawExpressionInput) {
   });
 
   const mode = functions[0].mode;
-  const mixedMode = functions.some((item) => item.mode !== mode);
-  if (mixedMode) {
+  if (functions.some((item) => item.mode !== mode)) {
     throw new Error("Non puoi mescolare funzioni 2D e 3D nello stesso grafico.");
   }
 
-  const parameterVarsSet = new Set();
-  functions.forEach((item) => {
-    item.parameterVars.forEach((name) => parameterVarsSet.add(name));
-  });
+  const parameterVars = new Set();
+  functions.forEach((fn) => fn.parameterVars.forEach((param) => parameterVars.add(param)));
 
   return {
     mode,
     axisVars: functions[0].axisVars,
-    parameterVars: [...parameterVarsSet].sort((a, b) => a.localeCompare(b)),
+    parameterVars: [...parameterVars].sort((a, b) => a.localeCompare(b)),
     functions,
     functionCount: functions.length,
   };
 }
 
-function readInputs() {
+function readFunctionInputs() {
   return {
     expressions: readExpressionList(),
-    xMin: safeNumber(refs.xMin.value, initialState.xMin),
-    xMax: safeNumber(refs.xMax.value, initialState.xMax),
-    yMin: safeNumber(refs.yMin.value, initialState.yMin),
-    yMax: safeNumber(refs.yMax.value, initialState.yMax),
-    resolution: Math.max(20, Math.min(420, Math.round(safeNumber(refs.resolution.value, initialState.resolution)))),
+    xMin: safeNumber(refs.xMin.value, initialFunctionState.xMin),
+    xMax: safeNumber(refs.xMax.value, initialFunctionState.xMax),
+    yMin: safeNumber(refs.yMin.value, initialFunctionState.yMin),
+    yMax: safeNumber(refs.yMax.value, initialFunctionState.yMax),
+    resolution: Math.max(25, Math.min(300, Math.round(safeNumber(refs.resolution.value, initialFunctionState.resolution)))),
     xScale: refs.xScale.value,
     yScale: refs.yScale.value,
     zScale: refs.zScale.value,
@@ -443,31 +447,34 @@ function setScaleSelectText(select, label) {
   select.options[1].textContent = `${label} log`;
 }
 
-function updateUiFromInference(inference) {
+function updateFunctionUi(inference) {
   const axisA = inference.axisVars[0] || "x";
   const axisB = inference.axisVars[1] || "y";
+  const is3d = inference.mode === MODE_3D;
 
   refs.xRangeLabel.textContent = `Intervallo ${axisA}`;
   refs.yRangeLabel.textContent = `Intervallo ${axisB}`;
-  refs.yRangeGroup.style.display = inference.mode === MODE_3D ? "block" : "none";
-  refs.colorGroup.style.display = inference.mode === MODE_3D ? "block" : "none";
-  refs.zScale.style.display = inference.mode === MODE_3D ? "block" : "none";
-  refs.plotTitle.textContent = inference.mode === MODE_3D ? "Grafico 3D" : "Grafico 2D";
+  refs.yRangeGroup.style.display = is3d ? "block" : "none";
+  refs.colorGroup.style.display = is3d ? "block" : "none";
+  refs.zScale.style.display = is3d ? "block" : "none";
+  refs.resolutionGroup.style.display = is3d ? "block" : "none";
+  refs.plotTitle.textContent = is3d ? "Grafico 3D" : "Grafico 2D (adaptive)";
 
-  const modeText =
-    inference.mode === MODE_3D ? `3D | z = f(${axisA}, ${axisB})` : `2D | f(${axisA})`;
-  const functionText = inference.functionCount > 1 ? `${inference.functionCount} funzioni` : "1 funzione";
-
+  const modeText = is3d ? `3D | z = f(${axisA}, ${axisB})` : `2D | f(${axisA})`;
+  const fnText = inference.functionCount > 1 ? `${inference.functionCount} funzioni` : "1 funzione";
   refs.detectedMode.textContent = modeText;
+
   refs.expressionHint.textContent =
     inference.parameterVars.length > 0
-      ? `${functionText}. Variabili extra: ${inference.parameterVars.join(", ")} (parametri condivisi).`
-      : `${functionText}. Nessun parametro extra: plotting diretto.`;
+      ? `${fnText}. Parametri condivisi: ${inference.parameterVars.join(", ")}.`
+      : `${fnText}. Nessun parametro extra.`;
 
   setScaleSelectText(refs.xScale, axisA);
-  if (inference.mode === MODE_3D) {
+  if (is3d) {
     setScaleSelectText(refs.yScale, axisB);
     setScaleSelectText(refs.zScale, "z");
+    refs.resolutionLabel.textContent = "Densita griglia 3D";
+    refs.resolutionHint.textContent = "Aumenta solo se necessario (impatta prestazioni).";
   } else {
     setScaleSelectText(refs.yScale, `f(${axisA})`);
   }
@@ -494,9 +501,7 @@ function renderParameterInputs(parameterVars) {
   refs.paramInputs.innerHTML = "";
 
   parameterVars.forEach((name) => {
-    if (!(name in parameterValues)) {
-      parameterValues[name] = 1;
-    }
+    if (!(name in parameterValues)) parameterValues[name] = 1;
 
     const row = document.createElement("div");
     row.className = "param-row";
@@ -519,7 +524,7 @@ function renderParameterInputs(parameterVars) {
 
     input.addEventListener("change", () => {
       parameterValues[name] = safeNumber(input.value, 1);
-      renderPlot();
+      renderFunctionsPlot();
     });
 
     row.appendChild(label);
@@ -529,70 +534,145 @@ function renderParameterInputs(parameterVars) {
 }
 
 function validateRanges(values, inference) {
-  if (values.xMin >= values.xMax) {
-    throw new Error(`${inference.axisVars[0]}: il minimo deve essere minore del massimo.`);
-  }
-
-  if (values.xScale === "log" && values.xMin <= 0) {
-    throw new Error(`Scala log su ${inference.axisVars[0]}: il minimo deve essere > 0.`);
-  }
+  if (values.xMin >= values.xMax) throw new Error(`${inference.axisVars[0]}: minimo deve essere < massimo.`);
+  if (values.xScale === "log" && values.xMin <= 0) throw new Error(`Scala log su ${inference.axisVars[0]}: minimo > 0.`);
 
   if (inference.mode === MODE_3D) {
-    if (values.yMin >= values.yMax) {
-      throw new Error(`${inference.axisVars[1]}: il minimo deve essere minore del massimo.`);
-    }
-
-    if (values.yScale === "log" && values.yMin <= 0) {
-      throw new Error(`Scala log su ${inference.axisVars[1]}: il minimo deve essere > 0.`);
-    }
+    if (values.yMin >= values.yMax) throw new Error(`${inference.axisVars[1]}: minimo deve essere < massimo.`);
+    if (values.yScale === "log" && values.yMin <= 0) throw new Error(`Scala log su ${inference.axisVars[1]}: minimo > 0.`);
   }
 }
 
-function plot2D(values, inference) {
+function buildAxisValues(min, max, count, scaleType) {
+  if (scaleType === "log") {
+    if (min <= 0 || max <= 0) throw new Error("La scala log richiede estremi > 0.");
+    if (count <= 1) return [min];
+    const minLog = Math.log10(min);
+    const maxLog = Math.log10(max);
+    const step = (maxLog - minLog) / (count - 1);
+    return Array.from({ length: count }, (_, i) => 10 ** (minLog + i * step));
+  }
+
+  if (count <= 1) return [min];
+  const step = (max - min) / (count - 1);
+  return Array.from({ length: count }, (_, i) => min + i * step);
+}
+
+function toFiniteNumber(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (value && typeof value.toNumber === "function") {
+    const n = value.toNumber();
+    return Number.isFinite(n) ? n : null;
+  }
+  if (value && typeof value.re === "number" && typeof value.im === "number") {
+    if (Math.abs(value.im) > 1e-9) return null;
+    return Number.isFinite(value.re) ? value.re : null;
+  }
+  return null;
+}
+
+function purgePlotlyIfNeeded(target) {
+  try {
+    if (target && target._fullLayout) Plotly.purge(target);
+  } catch {
+    // Ignore purge failures.
+  }
+}
+
+function denseSample(evalFn, min, max, count, scaleType = "linear") {
+  const x = buildAxisValues(min, max, count, scaleType);
+  const y = x.map((value) => {
+    try {
+      const result = evalFn(value);
+      return Number.isFinite(result) ? result : null;
+    } catch {
+      return null;
+    }
+  });
+  return { x, y };
+}
+
+function plot2DWithFunctionPlot(values, inference) {
+  if (typeof functionPlot !== "function") return false;
+  if (values.xScale !== "linear" || values.yScale !== "linear") return false;
+
   const axis = inference.axisVars[0] || "x";
-  const xValues = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
+  const baseScope = buildParameterScope(inference.parameterVars);
+
+  const data = inference.functions.map((fn, index) => {
+    const fnAxis = fn.axisVars[0] || axis;
+    const mappedFn = replaceAxisVarWithX(fn.formula, fnAxis);
+    return {
+      fn: mappedFn,
+      graphType: "polyline",
+      sampler: "interval",
+      nSamples: 240,
+      color: LINE_COLORS[index % LINE_COLORS.length],
+      scope: baseScope,
+    };
+  });
+
+  purgePlotlyIfNeeded(refs.plot);
+  refs.plot.innerHTML = "";
+
+  const width = Math.max(320, Math.floor(refs.plot.clientWidth));
+  const height = Math.max(320, Math.floor(refs.plot.clientHeight));
+
+  try {
+    functionPlot({
+      target: refs.plot,
+      width,
+      height,
+      grid: true,
+      xAxis: { label: axis, domain: [values.xMin, values.xMax] },
+      yAxis: { label: `f(${axis})` },
+      data,
+      tip: { xLine: true, yLine: true },
+      disableZoom: false,
+    });
+  } catch {
+    return false;
+  }
+
+  return true;
+}
+
+function plot2DWithPlotly(values, inference) {
+  const axis = inference.axisVars[0] || "x";
   const baseScope = buildParameterScope(inference.parameterVars);
 
   const traces = inference.functions
     .map((fn, index) => {
       const fnAxis = fn.axisVars[0] || axis;
-      let validCount = 0;
-      let positiveCount = 0;
+      const sampleCount = Math.max(1100, Math.min(7200, Math.round((refs.plot.clientWidth || 640) * 2.8)));
+      const sampled = denseSample(
+        (x) => toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnAxis]: x })),
+        values.xMin,
+        values.xMax,
+        sampleCount,
+        values.xScale,
+      );
 
-      const yValues = xValues.map((axisValue) => {
-        try {
-          const evaluated = toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnAxis]: axisValue }));
-          if (evaluated === null) return null;
-          validCount += 1;
-
-          if (values.yScale === "log") {
-            if (evaluated > 0) {
-              positiveCount += 1;
-              return evaluated;
-            }
-            return null;
-          }
-
-          return evaluated;
-        } catch {
-          return null;
-        }
+      const yValues = sampled.y.map((value) => {
+        if (value === null) return null;
+        if (values.yScale === "log" && value <= 0) return null;
+        return value;
       });
 
-      if (validCount === 0) return null;
-      if (values.yScale === "log" && positiveCount === 0) return null;
+      const anyValid = yValues.some((value) => value !== null);
+      if (!anyValid) return null;
 
       return {
-        x: xValues,
+        x: sampled.x,
         y: yValues,
-        type: "scattergl",
+        type: "scatter",
         mode: "lines",
         name: fn.originalExpression,
         line: {
           color: LINE_COLORS[index % LINE_COLORS.length],
-          width: 2.8,
-          shape: "spline",
-          smoothing: 1.05,
+          width: 2.5,
+          shape: "linear",
+          simplify: false,
         },
         hovertemplate: `${fn.originalExpression}<br>${axis}=%{x:.6g}<br>f=%{y:.6g}<extra></extra>`,
       };
@@ -603,6 +683,8 @@ function plot2D(values, inference) {
     throw new Error("Nessun valore numerico valido in 2D. Controlla funzione/intervallo.");
   }
 
+  refs.plot.innerHTML = "";
+
   const layout = {
     margin: { l: 46, r: 20, t: 14, b: 44 },
     paper_bgcolor: "#fcfdff",
@@ -611,7 +693,7 @@ function plot2D(values, inference) {
     dragmode: "zoom",
     showlegend: inference.functionCount > 1,
     legend: { orientation: "h", x: 0, y: 1.14 },
-    xaxis: { title: axis, type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+    xaxis: { title: axis, type: values.xScale, range: [values.xMin, values.xMax], gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
     yaxis: { title: `f(${axis})`, type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
   };
 
@@ -635,38 +717,25 @@ function plot3D(values, inference) {
   const yValues = buildAxisValues(values.yMin, values.yMax, values.resolution, values.yScale);
   const baseScope = buildParameterScope(inference.parameterVars);
 
-  const availableColorScales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
+  const scales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
+
   const traces = inference.functions
     .map((fn, index) => {
       const fnXAxis = fn.axisVars[0] || xAxis;
       const fnYAxis = fn.axisVars[1] || yAxis;
       let validCount = 0;
-      let positiveCount = 0;
 
-      const zValues = yValues.map((yValue) =>
-        xValues.map((xValue) => {
-          try {
-            const evaluated = toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnXAxis]: xValue, [fnYAxis]: yValue }));
-            if (evaluated === null) return Number.NaN;
-            validCount += 1;
-
-            if (values.zScale === "log") {
-              if (evaluated > 0) {
-                positiveCount += 1;
-                return evaluated;
-              }
-              return Number.NaN;
-            }
-
-            return evaluated;
-          } catch {
-            return Number.NaN;
-          }
+      const zValues = yValues.map((yv) =>
+        xValues.map((xv) => {
+          const value = toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnXAxis]: xv, [fnYAxis]: yv }));
+          if (value === null) return Number.NaN;
+          if (values.zScale === "log" && value <= 0) return Number.NaN;
+          validCount += 1;
+          return value;
         }),
       );
 
-      if (validCount === 0) return null;
-      if (values.zScale === "log" && positiveCount === 0) return null;
+      if (!validCount) return null;
 
       return {
         type: "surface",
@@ -674,7 +743,7 @@ function plot3D(values, inference) {
         y: yValues,
         z: zValues,
         name: fn.originalExpression,
-        colorscale: availableColorScales[index % availableColorScales.length],
+        colorscale: scales[index % scales.length],
         opacity: inference.functionCount > 1 ? 0.82 : 1,
         showscale: index === 0,
         connectgaps: false,
@@ -686,6 +755,8 @@ function plot3D(values, inference) {
   if (!traces.length) {
     throw new Error("Nessun valore numerico valido in 3D. Controlla funzione/intervallo.");
   }
+
+  refs.plot.innerHTML = "";
 
   const layout = {
     margin: { l: 0, r: 0, t: 8, b: 0 },
@@ -713,8 +784,8 @@ function plot3D(values, inference) {
   return Plotly.react(refs.plot, traces, layout, config);
 }
 
-function applyState(state) {
-  setFunctionExpressions(state.expression);
+function applyFunctionState(state) {
+  setFunctionExpressions(state.expressions || state.expression || ["sin(x)"]);
   refs.xMin.value = state.xMin;
   refs.xMax.value = state.xMax;
   refs.yMin.value = state.yMin;
@@ -726,91 +797,343 @@ function applyState(state) {
   refs.colorMap.value = state.colorMap;
 }
 
-function previewInference() {
-  refreshLatexForAllInputs();
+function previewFunctionInference() {
   try {
     const inference = inferMultipleExpressions(readExpressionList());
-    currentInference = inference;
-    updateUiFromInference(inference);
+    updateFunctionUi(inference);
     renderParameterInputs(inference.parameterVars);
   } catch {
-    // Ignore transient syntax errors while typing.
+    // Keep last valid state while typing.
   }
 }
 
-async function renderPlot() {
+function renderFunctionsPlot() {
   try {
-    const values = readInputs();
+    const values = readFunctionInputs();
     const inference = inferMultipleExpressions(values.expressions);
-    currentInference = inference;
 
-    updateUiFromInference(inference);
+    updateFunctionUi(inference);
     renderParameterInputs(inference.parameterVars);
     validateRanges(values, inference);
 
-    setMessage("Rendering in corso...", "ok");
+    setMessage(refs.message, "Rendering in corso...", "ok");
 
     if (inference.mode === MODE_3D) {
-      await plot3D(values, inference);
+      plot3D(values, inference);
       setMessage(
+        refs.message,
         `Grafico 3D aggiornato (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
         "ok",
       );
-    } else {
-      await plot2D(values, inference);
-      setMessage(`Grafico 2D aggiornato (${inference.functionCount} funzioni su asse ${inference.axisVars[0]}).`, "ok");
+      return;
     }
+
+    const usedAdaptive = plot2DWithFunctionPlot(values, inference);
+    if (!usedAdaptive) {
+      plot2DWithPlotly(values, inference);
+    }
+
+    const engineLabel = usedAdaptive ? "motore adaptive" : "fallback";
+    setMessage(refs.message, `Grafico 2D aggiornato (${inference.functionCount} funzioni, ${engineLabel}).`, "ok");
   } catch (error) {
-    setMessage(error.message || "Errore durante il plotting.", "error");
+    setMessage(refs.message, error.message || "Errore durante il plotting.", "error");
   }
 }
 
-function resetAll() {
+function resetFunctions() {
   Object.keys(parameterValues).forEach((key) => {
     delete parameterValues[key];
   });
-
-  applyState(initialState);
-  setMessage("");
-  previewInference();
-  renderPlot();
+  applyFunctionState(initialFunctionState);
+  setMessage(refs.message, "", "");
+  previewFunctionInference();
+  renderFunctionsPlot();
 }
 
 function loadRandomPreset() {
   const choice = presets[Math.floor(Math.random() * presets.length)];
-
-  applyState({
-    expression: choice.expression,
-    xMin: choice.xMin,
-    xMax: choice.xMax,
-    yMin: choice.yMin,
-    yMax: choice.yMax,
-    resolution: choice.resolution,
-    xScale: choice.xScale,
-    yScale: choice.yScale,
-    zScale: choice.zScale,
-    colorMap: choice.colorMap,
-  });
-
-  Object.keys(parameterValues).forEach((key) => {
-    delete parameterValues[key];
-  });
-
+  Object.keys(parameterValues).forEach((key) => delete parameterValues[key]);
   Object.entries(choice.params || {}).forEach(([name, value]) => {
     parameterValues[name] = value;
   });
 
-  previewInference();
-  renderPlot();
+  applyFunctionState(choice);
+  previewFunctionInference();
+  renderFunctionsPlot();
 }
 
-refs.plotBtn.addEventListener("click", renderPlot);
-refs.presetBtn.addEventListener("click", loadRandomPreset);
-refs.resetBtn.addEventListener("click", resetAll);
+function roundValue(value, decimals = 6) {
+  if (!Number.isFinite(value)) return value;
+  return Number(value.toFixed(decimals));
+}
+
+function formatScalar(value, decimals = 6) {
+  if (typeof value === "number") return String(roundValue(value, decimals));
+
+  if (value && typeof value.re === "number" && typeof value.im === "number") {
+    const re = roundValue(value.re, decimals);
+    const im = roundValue(Math.abs(value.im), decimals);
+    const sign = value.im >= 0 ? "+" : "-";
+    return `${re} ${sign} ${im}i`;
+  }
+
+  if (value && typeof value.toString === "function") {
+    return value.toString();
+  }
+
+  return String(value);
+}
+
+function formatVector(values) {
+  return `[${values.map((v) => formatScalar(v)).join(", ")}]`;
+}
+
+function parseMatrix(text, dimension) {
+  const rows = String(text || "")
+    .split(/[;\n]+/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+
+  if (rows.length !== dimension) {
+    throw new Error(`La matrice A deve avere ${dimension} righe.`);
+  }
+
+  const matrix = rows.map((row) =>
+    row
+      .split(/[\s,]+/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map(Number),
+  );
+
+  matrix.forEach((row, index) => {
+    if (row.length !== dimension) {
+      throw new Error(`La riga ${index + 1} della matrice A deve avere ${dimension} colonne.`);
+    }
+    if (row.some((value) => !Number.isFinite(value))) {
+      throw new Error(`La riga ${index + 1} della matrice A contiene valori non numerici.`);
+    }
+  });
+
+  return matrix;
+}
+
+function parseVector(text, dimension, label) {
+  const values = String(text || "")
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map(Number);
+
+  if (values.length !== dimension) {
+    throw new Error(`${label} deve contenere ${dimension} valori.`);
+  }
+
+  if (values.some((value) => !Number.isFinite(value))) {
+    throw new Error(`${label} contiene valori non numerici.`);
+  }
+
+  return values;
+}
+
+function vectorTrace2D(vector, name, color, dash = "solid") {
+  return {
+    type: "scatter",
+    mode: "lines+markers+text",
+    x: [0, vector[0]],
+    y: [0, vector[1]],
+    text: ["", name],
+    textposition: "top center",
+    line: { color, width: 4, dash },
+    marker: { size: 8, color },
+    name,
+  };
+}
+
+function vectorTrace3D(vector, name, color, dash = "solid") {
+  return {
+    type: "scatter3d",
+    mode: "lines+markers+text",
+    x: [0, vector[0]],
+    y: [0, vector[1]],
+    z: [0, vector[2]],
+    text: ["", name],
+    textposition: "top center",
+    line: { color, width: 6, dash },
+    marker: { size: 4, color },
+    name,
+  };
+}
+
+function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
+  purgePlotlyIfNeeded(refs.laPlot);
+  refs.laPlot.innerHTML = "";
+
+  if (dimension === 2) {
+    const basis1 = [1, 0];
+    const basis2 = [0, 1];
+    const tBasis1 = math.multiply(matrixA, basis1).valueOf();
+    const tBasis2 = math.multiply(matrixA, basis2).valueOf();
+
+    const traces = [
+      vectorTrace2D(vectorV, "v", "#0b57d0"),
+      vectorTrace2D(transformedV, "A·v", "#b3261e"),
+      vectorTrace2D(vectorB, "b", "#188038", "dot"),
+      vectorTrace2D(tBasis1, "A·e1", "#7b1fa2", "dash"),
+      vectorTrace2D(tBasis2, "A·e2", "#006c73", "dash"),
+    ];
+
+    return Plotly.react(
+      refs.laPlot,
+      traces,
+      {
+        margin: { l: 46, r: 20, t: 20, b: 46 },
+        paper_bgcolor: "#fcfdff",
+        plot_bgcolor: "#fcfdff",
+        showlegend: true,
+        dragmode: "pan",
+        xaxis: { title: "x", gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef", scaleanchor: "y", scaleratio: 1 },
+        yaxis: { title: "y", gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+      },
+      { responsive: true, displaylogo: false, scrollZoom: true },
+    );
+  }
+
+  const basis1 = [1, 0, 0];
+  const basis2 = [0, 1, 0];
+  const basis3 = [0, 0, 1];
+  const tBasis1 = math.multiply(matrixA, basis1).valueOf();
+  const tBasis2 = math.multiply(matrixA, basis2).valueOf();
+  const tBasis3 = math.multiply(matrixA, basis3).valueOf();
+
+  const traces = [
+    vectorTrace3D(vectorV, "v", "#0b57d0"),
+    vectorTrace3D(transformedV, "A·v", "#b3261e"),
+    vectorTrace3D(vectorB, "b", "#188038", "dot"),
+    vectorTrace3D(tBasis1, "A·e1", "#7b1fa2", "dash"),
+    vectorTrace3D(tBasis2, "A·e2", "#006c73", "dash"),
+    vectorTrace3D(tBasis3, "A·e3", "#7f5539", "dash"),
+  ];
+
+  return Plotly.react(
+    refs.laPlot,
+    traces,
+    {
+      margin: { l: 0, r: 0, t: 8, b: 0 },
+      paper_bgcolor: "#fcfdff",
+      showlegend: true,
+      scene: {
+        dragmode: "orbit",
+        xaxis: { title: "x", backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+        yaxis: { title: "y", backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+        zaxis: { title: "z", backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
+        aspectmode: "cube",
+      },
+    },
+    { responsive: true, displaylogo: false, scrollZoom: true },
+  );
+}
+
+function renderLinear() {
+  try {
+    const dimension = safeNumber(refs.laDimension.value, 2);
+    const matrixA = parseMatrix(refs.laMatrixA.value, dimension);
+    const vectorV = parseVector(refs.laVectorV.value, dimension, "Il vettore v");
+    const vectorB = parseVector(refs.laVectorB.value, dimension, "Il vettore b");
+
+    const transformedV = math.multiply(matrixA, vectorV).valueOf();
+    const determinant = math.det(matrixA);
+    const rank = math.rank(matrixA);
+
+    let solution;
+    try {
+      solution = math.squeeze(math.lusolve(matrixA, vectorB)).valueOf();
+    } catch {
+      solution = null;
+    }
+
+    let eigenValues = null;
+    try {
+      const eig = math.eigs(matrixA);
+      eigenValues = eig.values;
+    } catch {
+      eigenValues = null;
+    }
+
+    renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV);
+
+    refs.laOutput.innerHTML = [
+      `<div><strong>A · v</strong> = ${formatVector(transformedV)}</div>`,
+      `<div><strong>det(A)</strong> = ${roundValue(determinant)}</div>`,
+      `<div><strong>rank(A)</strong> = ${rank}</div>`,
+      `<div><strong>Soluzione Ax=b</strong> = ${solution ? formatVector(solution) : "non unica / non disponibile"}</div>`,
+      `<div><strong>Autovalori</strong> = ${eigenValues ? formatVector(eigenValues) : "non disponibili"}</div>`,
+    ].join("");
+
+    setMessage(refs.laMessage, "Algebra lineare aggiornata.", "ok");
+  } catch (error) {
+    setMessage(refs.laMessage, error.message || "Errore in algebra lineare.", "error");
+  }
+}
+
+function setLinearExample() {
+  const dimension = safeNumber(refs.laDimension.value, 2);
+  const sample = linearExamples[dimension] || linearExamples[2];
+  refs.laMatrixA.value = sample.matrixA;
+  refs.laVectorV.value = sample.vectorV;
+  refs.laVectorB.value = sample.vectorB;
+  renderLinear();
+}
+
+function resetLinear() {
+  refs.laDimension.value = "2";
+  refs.laMatrixA.value = linearExamples[2].matrixA;
+  refs.laVectorV.value = linearExamples[2].vectorV;
+  refs.laVectorB.value = linearExamples[2].vectorB;
+  refs.laOutput.innerHTML = "";
+  setMessage(refs.laMessage, "", "");
+  renderLinear();
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+
+  refs.mainTabs.querySelectorAll(".tab-btn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === tab);
+  });
+
+  const showFunctions = tab === TAB_FUNCTIONS;
+  refs.functionsTab.classList.toggle("active", showFunctions);
+  refs.linearTab.classList.toggle("active", !showFunctions);
+  refs.presetBtn.style.display = showFunctions ? "inline-flex" : "none";
+
+  if (showFunctions) {
+    renderFunctionsPlot();
+  } else {
+    renderLinear();
+  }
+}
+
+function handleResize() {
+  clearTimeout(resizeDebounceId);
+  resizeDebounceId = setTimeout(() => {
+    if (activeTab === TAB_FUNCTIONS) {
+      renderFunctionsPlot();
+    } else {
+      renderLinear();
+    }
+  }, 180);
+}
+
+refs.mainTabs.addEventListener("click", (event) => {
+  const button = event.target.closest(".tab-btn");
+  if (!button) return;
+  switchTab(button.dataset.tab === TAB_LINEAR ? TAB_LINEAR : TAB_FUNCTIONS);
+});
 
 refs.addFunctionBtn.addEventListener("click", () => {
   addFunctionInput("", true);
-  previewInference();
+  previewFunctionInference();
 });
 
 refs.functionList.addEventListener("click", (event) => {
@@ -820,44 +1143,56 @@ refs.functionList.addEventListener("click", (event) => {
   const row = removeButton.closest(".function-row");
   if (!row) return;
 
-  const allRows = [...refs.functionList.querySelectorAll(".function-row")];
-  if (allRows.length <= 1) {
-    const input = row.querySelector(".function-input");
-    if (input) input.value = "";
+  const rows = [...refs.functionList.querySelectorAll(".function-row")];
+  if (rows.length <= 1) {
+    const editor = row.querySelector(".function-editor");
+    if (editor) {
+      if (editor.tagName === "MATH-FIELD") {
+        editor.value = "";
+      } else {
+        editor.value = "";
+      }
+    }
   } else {
     row.remove();
   }
 
   updateRemoveButtonsState();
-  previewInference();
-  renderPlot();
+  previewFunctionInference();
+  renderFunctionsPlot();
 });
 
 refs.functionList.addEventListener("keydown", (event) => {
-  const input = event.target.closest(".function-input");
-  if (!input) return;
+  const editor = event.target.closest(".function-editor");
+  if (!editor) return;
   if (event.key === "Enter") {
     event.preventDefault();
-    renderPlot();
+    renderFunctionsPlot();
   }
 });
 
 refs.functionList.addEventListener("input", (event) => {
-  const input = event.target.closest(".function-input");
-  if (!input) return;
-  const shell = input.closest(".latex-input-shell");
-  if (!shell) return;
-
-  renderInlineLatex(shell, input.value);
+  const editor = event.target.closest(".function-editor");
+  if (!editor) return;
   clearTimeout(expressionDebounceId);
-  expressionDebounceId = setTimeout(previewInference, 160);
+  expressionDebounceId = setTimeout(() => {
+    previewFunctionInference();
+  }, 160);
 });
 
-window.addEventListener("resize", () => {
-  if (!refs.plot || !refs.plot.data) return;
-  Plotly.Plots.resize(refs.plot);
-});
+refs.plotBtn.addEventListener("click", renderFunctionsPlot);
+refs.resetBtn.addEventListener("click", resetFunctions);
+refs.presetBtn.addEventListener("click", loadRandomPreset);
 
-applyState(initialState);
-previewInference();
-renderPlot();
+refs.laApplyBtn.addEventListener("click", renderLinear);
+refs.laExampleBtn.addEventListener("click", setLinearExample);
+refs.laResetBtn.addEventListener("click", resetLinear);
+refs.laDimension.addEventListener("change", setLinearExample);
+
+window.addEventListener("resize", handleResize);
+
+applyFunctionState(initialFunctionState);
+previewFunctionInference();
+renderFunctionsPlot();
+resetLinear();
+switchTab(TAB_FUNCTIONS);
