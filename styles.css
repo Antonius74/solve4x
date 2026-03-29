@@ -160,6 +160,22 @@ h1 {
   font-size: 1.12rem;
 }
 
+.latex-line {
+  white-space: nowrap;
+}
+
+.latex-line + .latex-line {
+  margin-top: 6px;
+}
+
+.latex-line-secondary {
+  opacity: 0.96;
+}
+
+.latex-line-invalid {
+  color: #8f2634;
+}
+
 .latex-preview.invalid {
   color: #8f2634;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;

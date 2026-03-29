@@ -85,6 +85,9 @@ const presets = [
   },
 ];
 
+const LINE_COLORS = ["#0b57d0", "#e07a16", "#188038", "#b3261e", "#7b1fa2", "#006c73", "#7f5539", "#37474f"];
+const SURFACE_COLOR_SCALES = ["Viridis", "Turbo", "Plasma", "Inferno", "Cividis", "Electric"];
+
 const refs = {
   expression: document.getElementById("expression"),
   expressionLatex: document.getElementById("expressionLatex"),
@@ -200,31 +203,59 @@ function normalizeExpressionInput(rawInput) {
   return { formula: normalized, lhs: "" };
 }
 
+function splitExpressions(rawInput) {
+  return String(rawInput || "")
+    .split(/\n|;/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function renderLatexPreview(rawExpression) {
   if (!refs.expressionLatex) return;
 
-  const fallbackText = rawExpression && rawExpression.trim() ? rawExpression : "f(x)";
-  if (!window.katex || typeof window.katex.render !== "function" || !window.math) {
-    refs.expressionLatex.classList.add("invalid");
-    refs.expressionLatex.textContent = fallbackText;
+  const expressions = splitExpressions(rawExpression);
+  refs.expressionLatex.innerHTML = "";
+
+  if (!expressions.length) {
+    refs.expressionLatex.classList.remove("invalid");
+    refs.expressionLatex.textContent = "f(x)";
     return;
   }
 
-  try {
-    const normalized = normalizeExpressionInput(rawExpression || "");
-    const parsed = math.parse(normalized.formula);
-    const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
-    const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
-
-    refs.expressionLatex.classList.remove("invalid");
-    window.katex.render(fullTex, refs.expressionLatex, {
-      throwOnError: false,
-      displayMode: false,
-      strict: "ignore",
-    });
-  } catch {
+  if (!window.katex || typeof window.katex.render !== "function" || !window.math) {
     refs.expressionLatex.classList.add("invalid");
-    refs.expressionLatex.textContent = fallbackText;
+    refs.expressionLatex.textContent = expressions.join(" ; ");
+    return;
+  }
+
+  refs.expressionLatex.classList.remove("invalid");
+
+  expressions.forEach((expression, index) => {
+    const line = document.createElement("div");
+    line.className = "latex-line";
+
+    try {
+      const normalized = normalizeExpressionInput(expression);
+      const parsed = math.parse(normalized.formula);
+      const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
+      const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
+
+      window.katex.render(fullTex, line, {
+        throwOnError: false,
+        displayMode: false,
+        strict: "ignore",
+      });
+    } catch {
+      line.classList.add("latex-line-invalid");
+      line.textContent = expression;
+    }
+
+    if (index > 0) line.classList.add("latex-line-secondary");
+    refs.expressionLatex.appendChild(line);
+  });
+
+  if ([...refs.expressionLatex.querySelectorAll(".latex-line-invalid")].length > 0) {
+    refs.expressionLatex.classList.add("invalid");
   }
 }
 
@@ -297,6 +328,37 @@ function inferFromExpression(expressionInput) {
   };
 }
 
+function inferMultipleExpressions(rawExpressionInput) {
+  const expressions = splitExpressions(rawExpressionInput);
+  if (!expressions.length) {
+    throw new Error("Inserisci almeno una funzione.");
+  }
+
+  const functions = expressions.map((expression) => {
+    const inferred = inferFromExpression(expression);
+    return { ...inferred, originalExpression: expression };
+  });
+
+  const mode = functions[0].mode;
+  const mixedMode = functions.some((item) => item.mode !== mode);
+  if (mixedMode) {
+    throw new Error("Non puoi mescolare funzioni 2D e 3D nello stesso grafico.");
+  }
+
+  const parameterVarsSet = new Set();
+  functions.forEach((item) => {
+    item.parameterVars.forEach((name) => parameterVarsSet.add(name));
+  });
+
+  return {
+    mode,
+    axisVars: functions[0].axisVars,
+    parameterVars: [...parameterVarsSet].sort((a, b) => a.localeCompare(b)),
+    functions,
+    functionCount: functions.length,
+  };
+}
+
 function readInputs() {
   return {
     expression: refs.expression.value.trim(),
@@ -331,12 +393,13 @@ function updateUiFromInference(inference) {
 
   const modeText =
     inference.mode === MODE_3D ? `3D | z = f(${axisA}, ${axisB})` : `2D | f(${axisA})`;
+  const functionText = inference.functionCount > 1 ? `${inference.functionCount} funzioni` : "1 funzione";
 
   refs.detectedMode.textContent = modeText;
   refs.expressionHint.textContent =
     inference.parameterVars.length > 0
-      ? `Variabili extra rilevate: ${inference.parameterVars.join(", ")} (gestite come parametri).`
-      : "Nessun parametro extra: plotting diretto.";
+      ? `${functionText}. Variabili extra: ${inference.parameterVars.join(", ")} (parametri condivisi).`
+      : `${functionText}. Nessun parametro extra: plotting diretto.`;
 
   setScaleSelectText(refs.xScale, axisA);
   if (inference.mode === MODE_3D) {
@@ -423,54 +486,59 @@ function validateRanges(values, inference) {
 }
 
 function plot2D(values, inference) {
-  const axis = inference.axisVars[0];
+  const axis = inference.axisVars[0] || "x";
   const xValues = buildAxisValues(values.xMin, values.xMax, values.resolution, values.xScale);
   const baseScope = buildParameterScope(inference.parameterVars);
 
-  let validCount = 0;
-  let positiveCount = 0;
+  const traces = inference.functions
+    .map((fn, index) => {
+      const fnAxis = fn.axisVars[0] || axis;
+      let validCount = 0;
+      let positiveCount = 0;
 
-  const yValues = xValues.map((axisValue) => {
-    try {
-      const evaluated = toFiniteNumber(inference.compiled.evaluate({ ...baseScope, [axis]: axisValue }));
-      if (evaluated === null) return null;
-      validCount += 1;
+      const yValues = xValues.map((axisValue) => {
+        try {
+          const evaluated = toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnAxis]: axisValue }));
+          if (evaluated === null) return null;
+          validCount += 1;
 
-      if (values.yScale === "log") {
-        if (evaluated > 0) {
-          positiveCount += 1;
+          if (values.yScale === "log") {
+            if (evaluated > 0) {
+              positiveCount += 1;
+              return evaluated;
+            }
+            return null;
+          }
+
           return evaluated;
+        } catch {
+          return null;
         }
-        return null;
-      }
+      });
 
-      return evaluated;
-    } catch {
-      return null;
-    }
-  });
+      if (validCount === 0) return null;
+      if (values.yScale === "log" && positiveCount === 0) return null;
 
-  if (validCount === 0) {
+      return {
+        x: xValues,
+        y: yValues,
+        type: "scattergl",
+        mode: "lines",
+        name: fn.originalExpression,
+        line: {
+          color: LINE_COLORS[index % LINE_COLORS.length],
+          width: 2.8,
+          shape: "spline",
+          smoothing: 1.05,
+        },
+        hovertemplate: `${fn.originalExpression}<br>${axis}=%{x:.6g}<br>f=%{y:.6g}<extra></extra>`,
+      };
+    })
+    .filter(Boolean);
+
+  if (!traces.length) {
     throw new Error("Nessun valore numerico valido in 2D. Controlla funzione/intervallo.");
   }
-
-  if (values.yScale === "log" && positiveCount === 0) {
-    throw new Error("Con scala log sull'asse risultato servono valori positivi.");
-  }
-
-  const trace = {
-    x: xValues,
-    y: yValues,
-    type: "scattergl",
-    mode: "lines",
-    line: {
-      color: "#0b57d0",
-      width: 2.8,
-      shape: "spline",
-      smoothing: 1.05,
-    },
-    hovertemplate: `${axis}=%{x:.6g}<br>f=%{y:.6g}<extra></extra>`,
-  };
 
   const layout = {
     margin: { l: 46, r: 20, t: 14, b: 44 },
@@ -478,6 +546,8 @@ function plot2D(values, inference) {
     plot_bgcolor: "#fcfdff",
     uirevision: "keep-view",
     dragmode: "zoom",
+    showlegend: inference.functionCount > 1,
+    legend: { orientation: "h", x: 0, y: 1.14 },
     xaxis: { title: axis, type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
     yaxis: { title: `f(${axis})`, type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
   };
@@ -491,7 +561,7 @@ function plot2D(values, inference) {
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
 
-  return Plotly.react(refs.plot, [trace], layout, config);
+  return Plotly.react(refs.plot, traces, layout, config);
 }
 
 function plot3D(values, inference) {
@@ -502,54 +572,63 @@ function plot3D(values, inference) {
   const yValues = buildAxisValues(values.yMin, values.yMax, values.resolution, values.yScale);
   const baseScope = buildParameterScope(inference.parameterVars);
 
-  let validCount = 0;
-  let positiveCount = 0;
+  const availableColorScales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
+  const traces = inference.functions
+    .map((fn, index) => {
+      const fnXAxis = fn.axisVars[0] || xAxis;
+      const fnYAxis = fn.axisVars[1] || yAxis;
+      let validCount = 0;
+      let positiveCount = 0;
 
-  const zValues = yValues.map((yValue) =>
-    xValues.map((xValue) => {
-      try {
-        const evaluated = toFiniteNumber(inference.compiled.evaluate({ ...baseScope, [xAxis]: xValue, [yAxis]: yValue }));
-        if (evaluated === null) return Number.NaN;
-        validCount += 1;
+      const zValues = yValues.map((yValue) =>
+        xValues.map((xValue) => {
+          try {
+            const evaluated = toFiniteNumber(fn.compiled.evaluate({ ...baseScope, [fnXAxis]: xValue, [fnYAxis]: yValue }));
+            if (evaluated === null) return Number.NaN;
+            validCount += 1;
 
-        if (values.zScale === "log") {
-          if (evaluated > 0) {
-            positiveCount += 1;
+            if (values.zScale === "log") {
+              if (evaluated > 0) {
+                positiveCount += 1;
+                return evaluated;
+              }
+              return Number.NaN;
+            }
+
             return evaluated;
+          } catch {
+            return Number.NaN;
           }
-          return Number.NaN;
-        }
+        }),
+      );
 
-        return evaluated;
-      } catch {
-        return Number.NaN;
-      }
-    }),
-  );
+      if (validCount === 0) return null;
+      if (values.zScale === "log" && positiveCount === 0) return null;
 
-  if (validCount === 0) {
+      return {
+        type: "surface",
+        x: xValues,
+        y: yValues,
+        z: zValues,
+        name: fn.originalExpression,
+        colorscale: availableColorScales[index % availableColorScales.length],
+        opacity: inference.functionCount > 1 ? 0.82 : 1,
+        showscale: index === 0,
+        connectgaps: false,
+        hovertemplate: `${fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
+      };
+    })
+    .filter(Boolean);
+
+  if (!traces.length) {
     throw new Error("Nessun valore numerico valido in 3D. Controlla funzione/intervallo.");
   }
-
-  if (values.zScale === "log" && positiveCount === 0) {
-    throw new Error("Con scala log su z servono valori positivi.");
-  }
-
-  const trace = {
-    type: "surface",
-    x: xValues,
-    y: yValues,
-    z: zValues,
-    colorscale: values.colorMap,
-    showscale: true,
-    connectgaps: false,
-    hovertemplate: `${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
-  };
 
   const layout = {
     margin: { l: 0, r: 0, t: 8, b: 0 },
     paper_bgcolor: "#fcfdff",
     uirevision: "keep-view",
+    showlegend: inference.functionCount > 1,
     scene: {
       dragmode: "orbit",
       xaxis: { title: xAxis, type: values.xScale, backgroundcolor: "#f8fbff", gridcolor: "#dce7fb" },
@@ -568,7 +647,7 @@ function plot3D(values, inference) {
     doubleClick: "reset",
   };
 
-  return Plotly.react(refs.plot, [trace], layout, config);
+  return Plotly.react(refs.plot, traces, layout, config);
 }
 
 function applyState(state) {
@@ -587,7 +666,7 @@ function applyState(state) {
 function previewInference() {
   renderLatexPreview(refs.expression.value);
   try {
-    const inference = inferFromExpression(refs.expression.value);
+    const inference = inferMultipleExpressions(refs.expression.value);
     currentInference = inference;
     updateUiFromInference(inference);
     renderParameterInputs(inference.parameterVars);
@@ -599,7 +678,7 @@ function previewInference() {
 async function renderPlot() {
   try {
     const values = readInputs();
-    const inference = inferFromExpression(values.expression);
+    const inference = inferMultipleExpressions(values.expression);
     currentInference = inference;
 
     updateUiFromInference(inference);
@@ -610,10 +689,13 @@ async function renderPlot() {
 
     if (inference.mode === MODE_3D) {
       await plot3D(values, inference);
-      setMessage(`Grafico 3D aggiornato (${inference.axisVars[0]}, ${inference.axisVars[1]}).`, "ok");
+      setMessage(
+        `Grafico 3D aggiornato (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
+        "ok",
+      );
     } else {
       await plot2D(values, inference);
-      setMessage(`Grafico 2D aggiornato (${inference.axisVars[0]}).`, "ok");
+      setMessage(`Grafico 2D aggiornato (${inference.functionCount} funzioni su asse ${inference.axisVars[0]}).`, "ok");
     }
   } catch (error) {
     setMessage(error.message || "Errore durante il plotting.", "error");
