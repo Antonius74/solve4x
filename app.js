@@ -568,12 +568,38 @@ function purgePlotlyIfNeeded(target) {
   }
 }
 
-function renderWithPlotly(target, traces, layout, config) {
-  if (!target) throw new Error("Contenitore grafico non trovato.");
-  if (target._fullLayout) {
-    return Plotly.react(target, traces, layout, config);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForVisiblePlotArea(target, maxChecks = 14, delayMs = 40) {
+  for (let i = 0; i < maxChecks; i += 1) {
+    if (target.clientWidth > 80 && target.clientHeight > 80) return;
+    // Wait until tab/layout is visible before plotting.
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(delayMs);
   }
-  return Plotly.newPlot(target, traces, layout, config);
+}
+
+async function renderWithPlotly(target, traces, layout, config) {
+  if (!target) throw new Error("Contenitore grafico non trovato.");
+  await waitForVisiblePlotArea(target);
+  if (target._fullLayout) {
+    const result = await Plotly.react(target, traces, layout, config);
+    try {
+      Plotly.Plots.resize(target);
+    } catch {
+      // Ignore resize failures.
+    }
+    return result;
+  }
+  const result = await Plotly.newPlot(target, traces, layout, config);
+  try {
+    Plotly.Plots.resize(target);
+  } catch {
+    // Ignore resize failures.
+  }
+  return result;
 }
 
 function denseSample(evalFn, min, max, count, scaleType = "linear") {
@@ -706,7 +732,7 @@ function plot2DWithPlotly(values, inference) {
   return renderWithPlotly(refs.plot, traces, layout, config);
 }
 
-function plot3D(values, inference) {
+async function plot3D(values, inference) {
   const xAxis = inference.axisVars[0];
   const yAxis = inference.axisVars[1];
 
@@ -714,9 +740,7 @@ function plot3D(values, inference) {
   const yValues = buildAxisValues(values.yMin, values.yMax, values.resolution, values.yScale);
   const baseScope = buildParameterScope(inference.parameterVars);
 
-  const scales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
-
-  const traces = inference.functions
+  const prepared = inference.functions
     .map((fn, index) => {
       const fnXAxis = fn.axisVars[0] || xAxis;
       const fnYAxis = fn.axisVars[1] || yAxis;
@@ -734,28 +758,31 @@ function plot3D(values, inference) {
 
       if (!validCount) return null;
 
-      return {
-        type: "surface",
-        x: xValues,
-        y: yValues,
-        z: zValues,
-        name: fn.originalExpression,
-        colorscale: scales[index % scales.length],
-        opacity: inference.functionCount > 1 ? 0.82 : 1,
-        showscale: index === 0,
-        connectgaps: false,
-        hovertemplate: `${fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
-      };
+      return { fn, index, zValues };
     })
     .filter(Boolean);
 
-  if (!traces.length) {
+  if (!prepared.length) {
     throw new Error("Nessun valore numerico valido in 3D. Controlla funzione/intervallo.");
   }
 
   refs.plot.innerHTML = "";
 
-  const layout = {
+  const scales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
+  const surfaceTraces = prepared.map((item) => ({
+    type: "surface",
+    x: xValues,
+    y: yValues,
+    z: item.zValues,
+    name: item.fn.originalExpression,
+    colorscale: scales[item.index % scales.length],
+    opacity: inference.functionCount > 1 ? 0.82 : 1,
+    showscale: item.index === 0,
+    connectgaps: false,
+    hovertemplate: `${item.fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
+  }));
+
+  const layout3d = {
     margin: { l: 0, r: 0, t: 8, b: 0 },
     paper_bgcolor: "#fcfdff",
     uirevision: "keep-view",
@@ -770,7 +797,7 @@ function plot3D(values, inference) {
     },
   };
 
-  const config = {
+  const config3d = {
     responsive: true,
     displaylogo: false,
     displayModeBar: true,
@@ -778,7 +805,59 @@ function plot3D(values, inference) {
     doubleClick: "reset",
   };
 
-  return renderWithPlotly(refs.plot, traces, layout, config);
+  try {
+    await renderWithPlotly(refs.plot, surfaceTraces, layout3d, config3d);
+    return { fallback2d: false };
+  } catch (surfaceError) {
+    // Fallback senza WebGL: mappa di livello 2D (contour/heatmap).
+    const fallbackHeatmap = {
+      type: "contour",
+      x: xValues,
+      y: yValues,
+      z: prepared[0].zValues,
+      name: prepared[0].fn.originalExpression,
+      colorscale: values.colorMap,
+      contours: { coloring: "heatmap" },
+      showscale: true,
+      connectgaps: false,
+      hovertemplate: `${prepared[0].fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
+    };
+
+    const overlays = prepared.slice(1).map((item, idx) => ({
+      type: "contour",
+      x: xValues,
+      y: yValues,
+      z: item.zValues,
+      name: item.fn.originalExpression,
+      contours: { coloring: "none" },
+      line: { color: LINE_COLORS[(idx + 1) % LINE_COLORS.length], width: 2 },
+      showscale: false,
+      connectgaps: false,
+      hovertemplate: `${item.fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
+    }));
+
+    const layoutFallback = {
+      margin: { l: 46, r: 20, t: 14, b: 44 },
+      paper_bgcolor: "#fcfdff",
+      plot_bgcolor: "#fcfdff",
+      uirevision: "keep-view",
+      showlegend: inference.functionCount > 1,
+      xaxis: { title: xAxis, type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+      yaxis: { title: yAxis, type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
+    };
+
+    const configFallback = {
+      responsive: true,
+      displaylogo: false,
+      displayModeBar: true,
+      scrollZoom: true,
+      doubleClick: "reset+autosize",
+      modeBarButtonsToRemove: ["lasso2d", "select2d"],
+    };
+
+    await renderWithPlotly(refs.plot, [fallbackHeatmap, ...overlays], layoutFallback, configFallback);
+    return { fallback2d: true, reason: surfaceError && surfaceError.message ? surfaceError.message : "WebGL non disponibile" };
+  }
 }
 
 function applyFunctionState(state) {
@@ -804,7 +883,7 @@ function previewFunctionInference() {
   }
 }
 
-function renderFunctionsPlot() {
+async function renderFunctionsPlot() {
   try {
     const values = readFunctionInputs();
     const inference = inferMultipleExpressions(values.expressions);
@@ -816,18 +895,26 @@ function renderFunctionsPlot() {
     setMessage(refs.message, "Rendering in corso...", "ok");
 
     if (inference.mode === MODE_3D) {
-      plot3D(values, inference);
-      setMessage(
-        refs.message,
-        `Grafico 3D aggiornato (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
-        "ok",
-      );
+      const result = await plot3D(values, inference);
+      if (result && result.fallback2d) {
+        setMessage(
+          refs.message,
+          `WebGL non disponibile: mostrata mappa 2D di fallback (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
+          "ok",
+        );
+      } else {
+        setMessage(
+          refs.message,
+          `Grafico 3D aggiornato (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
+          "ok",
+        );
+      }
       return;
     }
 
     const usedAdaptive = plot2DWithFunctionPlot(values, inference);
     if (!usedAdaptive) {
-      plot2DWithPlotly(values, inference);
+      await plot2DWithPlotly(values, inference);
     }
 
     const engineLabel = usedAdaptive ? "motore adaptive" : "fallback";
@@ -1125,7 +1212,7 @@ function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
   );
 }
 
-function renderLinear() {
+async function renderLinear() {
   try {
     const dimension = safeNumber(refs.laDimension.value, 2);
     const matrixA = parseMatrix(refs.laMatrixA.value, dimension);
@@ -1152,7 +1239,7 @@ function renderLinear() {
       eigenValues = null;
     }
 
-    renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV);
+    await renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV);
 
     refs.laOutput.innerHTML = [
       `<div><strong>A · v</strong> = ${formatVector(transformedV)}</div>`,
