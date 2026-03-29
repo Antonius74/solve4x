@@ -73,7 +73,7 @@ const presets = [
     xScale: "linear",
     yScale: "linear",
     zScale: "linear",
-    colorMap: "Plasma",
+    colorMap: "Cividis",
     params: { k: 0.1 },
   },
 ];
@@ -585,7 +585,13 @@ async function waitForVisiblePlotArea(target, maxChecks = 14, delayMs = 40) {
 async function renderWithPlotly(target, traces, layout, config) {
   if (!target) throw new Error("Contenitore grafico non trovato.");
   await waitForVisiblePlotArea(target);
-  if (target._fullLayout) {
+  const canReact =
+    target.classList.contains("js-plotly-plot") &&
+    Array.isArray(target.data) &&
+    target.data.length >= 0 &&
+    !!target._fullLayout;
+
+  if (canReact) {
     const result = await Plotly.react(target, traces, layout, config);
     try {
       Plotly.Plots.resize(target);
@@ -709,6 +715,7 @@ function plot2DWithPlotly(values, inference) {
     throw new Error("Nessun valore numerico valido in 2D. Controlla funzione/intervallo.");
   }
 
+  purgePlotlyIfNeeded(refs.plot);
   refs.plot.innerHTML = "";
 
   const layout = {
@@ -769,16 +776,17 @@ async function plot3D(values, inference) {
     throw new Error("Nessun valore numerico valido in 3D. Controlla funzione/intervallo.");
   }
 
+  purgePlotlyIfNeeded(refs.plot);
   refs.plot.innerHTML = "";
 
-  const scales = [values.colorMap, ...SURFACE_COLOR_SCALES.filter((name) => name !== values.colorMap)];
+  const chosenScale = values.colorMap || "Cividis";
   const surfaceTraces = prepared.map((item) => ({
     type: "surface",
     x: xValues,
     y: yValues,
     z: item.zValues,
     name: item.fn.originalExpression,
-    colorscale: scales[item.index % scales.length],
+    colorscale: chosenScale,
     opacity: inference.functionCount > 1 ? 0.82 : 1,
     showscale: item.index === 0,
     connectgaps: false,
@@ -812,6 +820,13 @@ async function plot3D(values, inference) {
     await renderWithPlotly(refs.plot, surfaceTraces, layout3d, config3d);
     return { fallback2d: false };
   } catch (surfaceError) {
+    const reason = surfaceError && surfaceError.message ? String(surfaceError.message) : "";
+    const isWebGlIssue = /webgl|gl context|context|gpu|shader|not supported|failed to create/i.test(reason);
+
+    if (!isWebGlIssue) {
+      throw surfaceError;
+    }
+
     // Fallback senza WebGL: mappa di livello 2D (contour/heatmap).
     const fallbackHeatmap = {
       type: "contour",
@@ -819,7 +834,7 @@ async function plot3D(values, inference) {
       y: yValues,
       z: prepared[0].zValues,
       name: prepared[0].fn.originalExpression,
-      colorscale: values.colorMap,
+      colorscale: "Cividis",
       contours: { coloring: "heatmap" },
       showscale: true,
       connectgaps: false,
@@ -833,7 +848,7 @@ async function plot3D(values, inference) {
       z: item.zValues,
       name: item.fn.originalExpression,
       contours: { coloring: "none" },
-      line: { color: LINE_COLORS[(idx + 1) % LINE_COLORS.length], width: 2 },
+      line: { color: "#445570", width: 1.5 },
       showscale: false,
       connectgaps: false,
       hovertemplate: `${item.fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
@@ -859,7 +874,7 @@ async function plot3D(values, inference) {
     };
 
     await renderWithPlotly(refs.plot, [fallbackHeatmap, ...overlays], layoutFallback, configFallback);
-    return { fallback2d: true, reason: surfaceError && surfaceError.message ? surfaceError.message : "WebGL non disponibile" };
+    return { fallback2d: true, reason: reason || "WebGL non disponibile" };
   }
 }
 
