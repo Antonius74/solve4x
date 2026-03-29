@@ -210,8 +210,7 @@ function expressionToLatex(expression) {
   try {
     const normalized = normalizeExpressionInput(expression);
     const parsed = math.parse(normalized.formula);
-    const tex = parsed.toTex({ parenthesis: "auto", implicit: "show" });
-    return normalized.lhs ? `${normalized.lhs}=${tex}` : tex;
+    return parsed.toTex({ parenthesis: "auto", implicit: "show" });
   } catch {
     return String(expression || "");
   }
@@ -249,15 +248,25 @@ function createFunctionEditor(initialExpression) {
 function getFunctionEditorValue(editor) {
   if (!editor) return "";
 
+  let rawValue = "";
   if (editor.tagName === "MATH-FIELD" && typeof editor.getValue === "function") {
-    return String(editor.getValue("ascii-math") || "")
+    rawValue = String(editor.getValue("ascii-math") || "")
       .replace(/[−–]/g, "-")
       .replace(/×/g, "*")
       .replace(/÷/g, "/")
       .trim();
+  } else {
+    rawValue = String(editor.value || "").trim();
   }
 
-  return String(editor.value || "").trim();
+  if (!rawValue) return "";
+
+  try {
+    // Rende opzionale `y=` / `z=`: usiamo sempre l'espressione a destra.
+    return normalizeExpressionInput(rawValue).formula;
+  } catch {
+    return rawValue;
+  }
 }
 
 function getFunctionEditors() {
@@ -333,38 +342,18 @@ function collectVariableNames(parsed) {
     });
 }
 
-function inferAxes(variableNames, lhs = "") {
+function inferAxes(variableNames) {
   const hasX = variableNames.includes("x");
   const hasY = variableNames.includes("y");
 
-  const firstNonY = variableNames.find((name) => name !== "y");
-  const fallback2DAxis = hasX ? "x" : firstNonY || variableNames[0] || "x";
-
-  if (lhs === "z") {
-    if (hasX || hasY) {
-      const axisA = hasX ? "x" : firstNonY || "x";
-      const axisB = hasY ? "y" : axisA === "x" ? "y" : "x";
-      return { mode: MODE_3D, axisVars: [axisA, axisB] };
-    }
-    if (variableNames.length >= 2) {
-      return { mode: MODE_3D, axisVars: [variableNames[0], variableNames[1]] };
-    }
-    if (variableNames.length === 1) {
-      const axisA = variableNames[0];
-      return { mode: MODE_3D, axisVars: [axisA, axisA === "x" ? "y" : "x"] };
-    }
-    return { mode: MODE_3D, axisVars: ["x", "y"] };
-  }
-
-  if (lhs === "y") {
-    return { mode: MODE_2D, axisVars: [fallback2DAxis] };
-  }
+  if (!variableNames.length) return { mode: MODE_2D, axisVars: ["x"] };
 
   if (hasX && hasY) {
     return { mode: MODE_3D, axisVars: ["x", "y"] };
   }
 
-  return { mode: MODE_2D, axisVars: [fallback2DAxis] };
+  const axis = hasX ? "x" : variableNames[0];
+  return { mode: MODE_2D, axisVars: [axis] };
 }
 
 function inferFromExpression(expressionInput) {
@@ -382,7 +371,7 @@ function inferFromExpression(expressionInput) {
   }
 
   const variables = collectVariableNames(parsed);
-  const axisInfo = inferAxes(variables, normalized.lhs);
+  const axisInfo = inferAxes(variables);
   const axisVars = axisInfo.axisVars.filter(Boolean);
   const parameterVars = variables.filter((name) => !axisVars.includes(name));
 
