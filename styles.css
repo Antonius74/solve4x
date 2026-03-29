@@ -143,42 +143,72 @@ h1 {
   box-shadow: 0 0 0 4px rgba(11, 87, 208, 0.18);
 }
 
-.latex-preview {
-  margin-top: 8px;
-  min-height: 46px;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
-  border: 1px dashed rgba(31, 55, 92, 0.28);
-  background: rgba(247, 250, 255, 0.9);
+.function-list {
+  display: grid;
+  gap: 8px;
+}
+
+.function-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.latex-input-shell {
+  position: relative;
+}
+
+.latex-overlay {
+  position: absolute;
+  inset: 0;
+  padding: 11px 12px;
   display: flex;
   align-items: center;
   overflow-x: auto;
   overflow-y: hidden;
+  pointer-events: none;
+  border-radius: var(--radius-md);
+  z-index: 1;
 }
 
-.latex-preview .katex {
+.latex-overlay .katex {
   font-size: 1.12rem;
-}
-
-.latex-line {
   white-space: nowrap;
 }
 
-.latex-line + .latex-line {
-  margin-top: 6px;
+.function-input {
+  position: relative;
+  z-index: 2;
+  background: transparent;
 }
 
-.latex-line-secondary {
-  opacity: 0.96;
+.latex-input-shell.latex-active .function-input {
+  color: transparent;
+  caret-color: #1e2530;
 }
 
-.latex-line-invalid {
+.latex-input-shell.invalid .function-input {
   color: #8f2634;
+  caret-color: #8f2634;
 }
 
-.latex-preview.invalid {
-  color: #8f2634;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+.latex-input-shell.invalid .latex-overlay {
+  display: none;
+}
+
+.function-remove {
+  min-width: 44px;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  padding: 0;
+  line-height: 1;
+  font-size: 1.2rem;
+}
+
+.add-function-btn {
+  margin-top: 8px;
 }
 
 .row-2,

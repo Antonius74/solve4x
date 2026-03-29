@@ -17,6 +17,7 @@ Poi visita `http://localhost:8080`.
 
 - Rilevamento automatico 2D/3D in base alle variabili presenti.
 - Plot multiplo: puoi disegnare piu funzioni nello stesso grafico.
+- Rendering LaTeX live direttamente dentro ogni textbox funzione.
 - Input dinamico dei parametri extra (es. `a`, `b`, `k`) come costanti modificabili.
 - Plot 2D: `f(x)` con zoom/pan e scala lineare/logaritmica.
 - Plot 3D: `z = f(x,y)` come superficie interattiva ruotabile con mouse/touch.
@@ -34,7 +35,7 @@ Esempi validi:
 - `z = x^2 + y^2`
 - `a*sin(b*x) + c`
 - `sin(sqrt(x^2 + y^2)) / (sqrt(x^2 + y^2) + k)`
-- `sin(x); cos(x)/2; x^2/15` (multi-funzione 2D)
+- `sin(x)` + `cos(x)/2` + `x^2/15` in textbox separati (multi-funzione 2D)
 
 Funzioni utili: `sin`, `cos`, `tan`, `log`, `sqrt`, `exp`, `abs`, `pow` e molte altre supportate da math.js.
 
@@ -42,4 +43,5 @@ Funzioni utili: `sin`, `cos`, `tan`, `log`, `sqrt`, `exp`, `abs`, `pow` e molte 
 
 - Scala logaritmica: i limiti devono essere maggiori di zero.
 - In 3D evita risoluzioni troppo alte su mobile (consigliato <= 180).
-- Multi-funzione: separa con `;` o nuova riga. Non mischiare 2D e 3D nello stesso plot.
+- Multi-funzione: usa il bottone `+ Aggiungi funzione` per inserire altri textbox.
+- Non mischiare 2D e 3D nello stesso plot.

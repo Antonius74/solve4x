@@ -10,10 +10,10 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260328-2" />
+    <link rel="stylesheet" href="styles.css?v=20260329-1" />
     <script>
       (function () {
-        const appVersion = "20260328-2";
+        const appVersion = "20260329-1";
         const dependencySets = [
           {
             styles: ["https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"],
@@ -146,16 +146,10 @@
         </div>
 
         <div class="field-group">
-          <label for="expression" class="field-label">Funzione</label>
-          <input
-            id="expression"
-            type="text"
-            class="input"
-            placeholder="Esempio: sin(x); cos(x)/2; y=x^2"
-            value="sin(x)"
-          />
-          <div id="expressionLatex" class="latex-preview" aria-live="polite"></div>
-          <p id="expressionHint" class="hint">Separatore funzioni: ';' o nuova riga.</p>
+          <label class="field-label">Funzione</label>
+          <div id="functionList" class="function-list" aria-live="polite"></div>
+          <button id="addFunctionBtn" class="btn btn-outline add-function-btn" type="button">+ Aggiungi funzione</button>
+          <p id="expressionHint" class="hint">Ogni funzione ha il suo textbox con rendering LaTeX live.</p>
         </div>
 
         <div class="field-group">

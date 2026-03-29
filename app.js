@@ -89,8 +89,8 @@ const LINE_COLORS = ["#0b57d0", "#e07a16", "#188038", "#b3261e", "#7b1fa2", "#00
 const SURFACE_COLOR_SCALES = ["Viridis", "Turbo", "Plasma", "Inferno", "Cividis", "Electric"];
 
 const refs = {
-  expression: document.getElementById("expression"),
-  expressionLatex: document.getElementById("expressionLatex"),
+  functionList: document.getElementById("functionList"),
+  addFunctionBtn: document.getElementById("addFunctionBtn"),
   expressionHint: document.getElementById("expressionHint"),
   detectedMode: document.getElementById("detectedMode"),
   xRangeLabel: document.getElementById("xRangeLabel"),
@@ -210,53 +210,110 @@ function splitExpressions(rawInput) {
     .filter(Boolean);
 }
 
-function renderLatexPreview(rawExpression) {
-  if (!refs.expressionLatex) return;
+function getFunctionInputs() {
+  return [...refs.functionList.querySelectorAll(".function-input")];
+}
 
-  const expressions = splitExpressions(rawExpression);
-  refs.expressionLatex.innerHTML = "";
+function readExpressionList() {
+  return getFunctionInputs()
+    .map((input) => input.value.trim())
+    .filter(Boolean);
+}
 
-  if (!expressions.length) {
-    refs.expressionLatex.classList.remove("invalid");
-    refs.expressionLatex.textContent = "f(x)";
-    return;
-  }
+function updateRemoveButtonsState() {
+  const removeButtons = [...refs.functionList.querySelectorAll(".function-remove")];
+  const disabled = removeButtons.length <= 1;
+  removeButtons.forEach((button) => {
+    button.disabled = disabled;
+  });
+}
+
+function renderInlineLatex(shell, expression) {
+  const overlay = shell.querySelector(".latex-overlay");
+  if (!overlay) return;
+
+  overlay.innerHTML = "";
+  shell.classList.remove("latex-active", "invalid");
+
+  const text = String(expression || "").trim();
+  if (!text) return;
 
   if (!window.katex || typeof window.katex.render !== "function" || !window.math) {
-    refs.expressionLatex.classList.add("invalid");
-    refs.expressionLatex.textContent = expressions.join(" ; ");
     return;
   }
 
-  refs.expressionLatex.classList.remove("invalid");
+  try {
+    const normalized = normalizeExpressionInput(text);
+    const parsed = math.parse(normalized.formula);
+    const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
+    const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
 
-  expressions.forEach((expression, index) => {
-    const line = document.createElement("div");
-    line.className = "latex-line";
-
-    try {
-      const normalized = normalizeExpressionInput(expression);
-      const parsed = math.parse(normalized.formula);
-      const texBody = parsed.toTex({ parenthesis: "auto", implicit: "show" });
-      const fullTex = normalized.lhs ? `${normalized.lhs} = ${texBody}` : texBody;
-
-      window.katex.render(fullTex, line, {
-        throwOnError: false,
-        displayMode: false,
-        strict: "ignore",
-      });
-    } catch {
-      line.classList.add("latex-line-invalid");
-      line.textContent = expression;
-    }
-
-    if (index > 0) line.classList.add("latex-line-secondary");
-    refs.expressionLatex.appendChild(line);
-  });
-
-  if ([...refs.expressionLatex.querySelectorAll(".latex-line-invalid")].length > 0) {
-    refs.expressionLatex.classList.add("invalid");
+    window.katex.render(fullTex, overlay, {
+      throwOnError: false,
+      displayMode: false,
+      strict: "ignore",
+    });
+    shell.classList.add("latex-active");
+  } catch {
+    shell.classList.add("invalid");
   }
+}
+
+function refreshLatexForAllInputs() {
+  getFunctionInputs().forEach((input) => {
+    const shell = input.closest(".latex-input-shell");
+    if (!shell) return;
+    renderInlineLatex(shell, input.value);
+  });
+}
+
+function addFunctionInput(initialValue = "", focusInput = false) {
+  const row = document.createElement("div");
+  row.className = "function-row";
+
+  const shell = document.createElement("div");
+  shell.className = "latex-input-shell";
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "input function-input";
+  input.placeholder = "Esempio: sin(x), z=x^2+y^2";
+  input.value = initialValue;
+
+  const overlay = document.createElement("div");
+  overlay.className = "latex-overlay";
+  overlay.setAttribute("aria-hidden", "true");
+
+  const removeButton = document.createElement("button");
+  removeButton.type = "button";
+  removeButton.className = "btn btn-outline function-remove";
+  removeButton.title = "Rimuovi funzione";
+  removeButton.textContent = "−";
+
+  shell.appendChild(input);
+  shell.appendChild(overlay);
+  row.appendChild(shell);
+  row.appendChild(removeButton);
+  refs.functionList.appendChild(row);
+
+  renderInlineLatex(shell, input.value);
+  updateRemoveButtonsState();
+
+  if (focusInput) {
+    input.focus();
+    input.select();
+  }
+}
+
+function setFunctionExpressions(expressions, focusFirst = false) {
+  refs.functionList.innerHTML = "";
+  const parsedExpressions = Array.isArray(expressions)
+    ? expressions.map((item) => String(item).trim()).filter(Boolean)
+    : splitExpressions(expressions);
+
+  const items = parsedExpressions.length ? parsedExpressions : ["sin(x)"];
+  items.forEach((value, index) => addFunctionInput(value, focusFirst && index === 0));
+  refreshLatexForAllInputs();
 }
 
 function collectVariableNames(parsed) {
@@ -329,7 +386,9 @@ function inferFromExpression(expressionInput) {
 }
 
 function inferMultipleExpressions(rawExpressionInput) {
-  const expressions = splitExpressions(rawExpressionInput);
+  const expressions = Array.isArray(rawExpressionInput)
+    ? rawExpressionInput.map((item) => String(item).trim()).filter(Boolean)
+    : splitExpressions(rawExpressionInput);
   if (!expressions.length) {
     throw new Error("Inserisci almeno una funzione.");
   }
@@ -361,7 +420,7 @@ function inferMultipleExpressions(rawExpressionInput) {
 
 function readInputs() {
   return {
-    expression: refs.expression.value.trim(),
+    expressions: readExpressionList(),
     xMin: safeNumber(refs.xMin.value, initialState.xMin),
     xMax: safeNumber(refs.xMax.value, initialState.xMax),
     yMin: safeNumber(refs.yMin.value, initialState.yMin),
@@ -651,7 +710,7 @@ function plot3D(values, inference) {
 }
 
 function applyState(state) {
-  refs.expression.value = state.expression;
+  setFunctionExpressions(state.expression);
   refs.xMin.value = state.xMin;
   refs.xMax.value = state.xMax;
   refs.yMin.value = state.yMin;
@@ -664,9 +723,9 @@ function applyState(state) {
 }
 
 function previewInference() {
-  renderLatexPreview(refs.expression.value);
+  refreshLatexForAllInputs();
   try {
-    const inference = inferMultipleExpressions(refs.expression.value);
+    const inference = inferMultipleExpressions(readExpressionList());
     currentInference = inference;
     updateUiFromInference(inference);
     renderParameterInputs(inference.parameterVars);
@@ -678,7 +737,7 @@ function previewInference() {
 async function renderPlot() {
   try {
     const values = readInputs();
-    const inference = inferMultipleExpressions(values.expression);
+    const inference = inferMultipleExpressions(values.expressions);
     currentInference = inference;
 
     updateUiFromInference(inference);
@@ -745,13 +804,49 @@ refs.plotBtn.addEventListener("click", renderPlot);
 refs.presetBtn.addEventListener("click", loadRandomPreset);
 refs.resetBtn.addEventListener("click", resetAll);
 
-refs.expression.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") renderPlot();
+refs.addFunctionBtn.addEventListener("click", () => {
+  addFunctionInput("", true);
+  previewInference();
 });
 
-refs.expression.addEventListener("input", () => {
+refs.functionList.addEventListener("click", (event) => {
+  const removeButton = event.target.closest(".function-remove");
+  if (!removeButton) return;
+
+  const row = removeButton.closest(".function-row");
+  if (!row) return;
+
+  const allRows = [...refs.functionList.querySelectorAll(".function-row")];
+  if (allRows.length <= 1) {
+    const input = row.querySelector(".function-input");
+    if (input) input.value = "";
+  } else {
+    row.remove();
+  }
+
+  updateRemoveButtonsState();
+  previewInference();
+  renderPlot();
+});
+
+refs.functionList.addEventListener("keydown", (event) => {
+  const input = event.target.closest(".function-input");
+  if (!input) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    renderPlot();
+  }
+});
+
+refs.functionList.addEventListener("input", (event) => {
+  const input = event.target.closest(".function-input");
+  if (!input) return;
+  const shell = input.closest(".latex-input-shell");
+  if (!shell) return;
+
+  renderInlineLatex(shell, input.value);
   clearTimeout(expressionDebounceId);
-  expressionDebounceId = setTimeout(previewInference, 180);
+  expressionDebounceId = setTimeout(previewInference, 160);
 });
 
 window.addEventListener("resize", () => {
