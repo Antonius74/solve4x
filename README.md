@@ -46,3 +46,4 @@ Funzioni utili: `sin`, `cos`, `tan`, `log`, `sqrt`, `exp`, `abs`, `pow` e molte 
 - In 3D evita risoluzioni troppo alte su mobile (consigliato <= 180).
 - Multi-funzione: usa il bottone `+ Aggiungi funzione` per inserire altri textbox.
 - Non mischiare 2D e 3D nello stesso plot.
+- `Preset esempio` usa preset 3D e l'app parte con un esempio 3D.

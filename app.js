@@ -25,7 +25,7 @@ const SURFACE_COLOR_SCALES = ["Viridis", "Turbo", "Plasma", "Inferno", "Cividis"
 
 const presets = [
   {
-    expressions: ["sin(x)"],
+    expressions: ["sin(x)*cos(y)"],
     xMin: -10,
     xMax: 10,
     yMin: -10,
@@ -38,7 +38,7 @@ const presets = [
     params: {},
   },
   {
-    expressions: ["sin(x)", "0.5*cos(2*x)", "x^2/20"],
+    expressions: ["0.55*sin(x) + 0.45*cos(y)", "0.05*(x^2 + y^2)"],
     xMin: -12,
     xMax: 12,
     yMin: -10,
@@ -90,7 +90,7 @@ const presets = [
     params: {},
   },
   {
-    expressions: ["exp(-(x^2 + y^2)/18) * sin(3*x) * cos(3*y)", "0.2*cos(0.5*x)"],
+    expressions: ["exp(-(x^2 + y^2)/18) * sin(3*x) * cos(3*y)", "0.2*cos(0.5*x)*cos(0.25*y)"],
     xMin: -9,
     xMax: 9,
     yMin: -9,
@@ -184,7 +184,7 @@ const presets = [
     expressions: [
       "exp(-((x-a)^2 + (y-b)^2)/s)",
       "exp(-((x+a)^2 + (y+b)^2)/s)",
-      "-0.25",
+      "0*x + 0*y - 0.25",
     ],
     xMin: -10,
     xMax: 10,
@@ -302,11 +302,11 @@ const refs = {
 };
 
 const initialFunctionState = {
-  expressions: ["sin(x)"],
-  xMin: -10,
-  xMax: 10,
-  yMin: -10,
-  yMax: 10,
+  expressions: ["sin(x)*cos(y)"],
+  xMin: -8,
+  xMax: 8,
+  yMin: -8,
+  yMax: 8,
   resolution: 120,
   xScale: "linear",
   yScale: "linear",
