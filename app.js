@@ -936,6 +936,100 @@ function parseVector(text, dimension, label) {
   return values;
 }
 
+function matrixRank(matrix, tolerance = 1e-10) {
+  const rows = matrix.length;
+  const cols = matrix[0].length;
+  const work = matrix.map((row) => row.map((value) => Number(value)));
+
+  let rank = 0;
+  let pivotRow = 0;
+  let pivotCol = 0;
+
+  while (pivotRow < rows && pivotCol < cols) {
+    let bestRow = pivotRow;
+    let bestValue = Math.abs(work[bestRow][pivotCol]);
+
+    for (let row = pivotRow + 1; row < rows; row += 1) {
+      const candidate = Math.abs(work[row][pivotCol]);
+      if (candidate > bestValue) {
+        bestValue = candidate;
+        bestRow = row;
+      }
+    }
+
+    if (bestValue <= tolerance) {
+      pivotCol += 1;
+      continue;
+    }
+
+    if (bestRow !== pivotRow) {
+      const temp = work[pivotRow];
+      work[pivotRow] = work[bestRow];
+      work[bestRow] = temp;
+    }
+
+    const pivotValue = work[pivotRow][pivotCol];
+    for (let col = pivotCol; col < cols; col += 1) {
+      work[pivotRow][col] /= pivotValue;
+    }
+
+    for (let row = 0; row < rows; row += 1) {
+      if (row === pivotRow) continue;
+      const factor = work[row][pivotCol];
+      if (Math.abs(factor) <= tolerance) continue;
+      for (let col = pivotCol; col < cols; col += 1) {
+        work[row][col] -= factor * work[pivotRow][col];
+      }
+    }
+
+    rank += 1;
+    pivotRow += 1;
+    pivotCol += 1;
+  }
+
+  return rank;
+}
+
+function matrixDeterminant(matrix, tolerance = 1e-12) {
+  const size = matrix.length;
+  const work = matrix.map((row) => row.map((value) => Number(value)));
+  let determinant = 1;
+  let sign = 1;
+
+  for (let pivot = 0; pivot < size; pivot += 1) {
+    let bestRow = pivot;
+    let bestValue = Math.abs(work[pivot][pivot]);
+    for (let row = pivot + 1; row < size; row += 1) {
+      const candidate = Math.abs(work[row][pivot]);
+      if (candidate > bestValue) {
+        bestValue = candidate;
+        bestRow = row;
+      }
+    }
+
+    if (bestValue <= tolerance) return 0;
+
+    if (bestRow !== pivot) {
+      const temp = work[pivot];
+      work[pivot] = work[bestRow];
+      work[bestRow] = temp;
+      sign *= -1;
+    }
+
+    const pivotValue = work[pivot][pivot];
+    determinant *= pivotValue;
+
+    for (let row = pivot + 1; row < size; row += 1) {
+      const factor = work[row][pivot] / pivotValue;
+      for (let col = pivot; col < size; col += 1) {
+        work[row][col] -= factor * work[pivot][col];
+      }
+    }
+  }
+
+  return sign * determinant;
+}
+
 function vectorTrace2D(vector, name, color, dash = "solid") {
   return {
     type: "scatter",
@@ -1042,8 +1136,9 @@ function renderLinear() {
     const vectorB = parseVector(refs.laVectorB.value, dimension, "Il vettore b");
 
     const transformedV = math.multiply(matrixA, vectorV).valueOf();
-    const determinant = math.det(matrixA);
-    const rank = math.rank(matrixA);
+    const determinant =
+      typeof math.det === "function" ? math.det(matrixA) : matrixDeterminant(matrixA);
+    const rank = typeof math.rank === "function" ? math.rank(matrixA) : matrixRank(matrixA);
 
     let solution;
     try {
