@@ -579,6 +579,14 @@ function purgePlotlyIfNeeded(target) {
   }
 }
 
+function renderWithPlotly(target, traces, layout, config) {
+  if (!target) throw new Error("Contenitore grafico non trovato.");
+  if (target._fullLayout) {
+    return Plotly.react(target, traces, layout, config);
+  }
+  return Plotly.newPlot(target, traces, layout, config);
+}
+
 function denseSample(evalFn, min, max, count, scaleType = "linear") {
   const x = buildAxisValues(min, max, count, scaleType);
   const y = x.map((value) => {
@@ -706,7 +714,7 @@ function plot2DWithPlotly(values, inference) {
     modeBarButtonsToRemove: ["lasso2d", "select2d"],
   };
 
-  return Plotly.react(refs.plot, traces, layout, config);
+  return renderWithPlotly(refs.plot, traces, layout, config);
 }
 
 function plot3D(values, inference) {
@@ -781,7 +789,7 @@ function plot3D(values, inference) {
     doubleClick: "reset",
   };
 
-  return Plotly.react(refs.plot, traces, layout, config);
+  return renderWithPlotly(refs.plot, traces, layout, config);
 }
 
 function applyFunctionState(state) {
@@ -1077,7 +1085,7 @@ function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
       vectorTrace2D(tBasis2, "A·e2", "#006c73", "dash"),
     ];
 
-    return Plotly.react(
+    return renderWithPlotly(
       refs.laPlot,
       traces,
       {
@@ -1109,7 +1117,7 @@ function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
     vectorTrace3D(tBasis3, "A·e3", "#7f5539", "dash"),
   ];
 
-  return Plotly.react(
+  return renderWithPlotly(
     refs.laPlot,
     traces,
     {
