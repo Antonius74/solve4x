@@ -2,6 +2,7 @@ const MODE_2D = "2d";
 const MODE_3D = "3d";
 const TAB_FUNCTIONS = "functions";
 const TAB_LINEAR = "linear";
+const ENABLE_FUNCTION_PLOT_ENGINE = false;
 
 const RESERVED_IDENTIFIERS = new Set([
   "e",
@@ -447,7 +448,7 @@ function updateFunctionUi(inference) {
   refs.colorGroup.style.display = is3d ? "block" : "none";
   refs.zScale.style.display = is3d ? "block" : "none";
   refs.resolutionGroup.style.display = is3d ? "block" : "none";
-  refs.plotTitle.textContent = is3d ? "Grafico 3D" : "Grafico 2D (adaptive)";
+  refs.plotTitle.textContent = is3d ? "Grafico 3D" : "Grafico 2D";
 
   const modeText = is3d ? `3D | z = f(${axisA}, ${axisB})` : `2D | f(${axisA})`;
   const fnText = inference.functionCount > 1 ? `${inference.functionCount} funzioni` : "1 funzione";
@@ -616,6 +617,7 @@ function denseSample(evalFn, min, max, count, scaleType = "linear") {
 }
 
 function plot2DWithFunctionPlot(values, inference) {
+  if (!ENABLE_FUNCTION_PLOT_ENGINE) return false;
   if (typeof functionPlot !== "function") return false;
   if (values.xScale !== "linear" || values.yScale !== "linear") return false;
 
@@ -657,7 +659,8 @@ function plot2DWithFunctionPlot(values, inference) {
     return false;
   }
 
-  return true;
+  const hasVisibleCurve = !!refs.plot.querySelector(".graph path, path.line, g.graph path");
+  return hasVisibleCurve;
 }
 
 function plot2DWithPlotly(values, inference) {
@@ -917,7 +920,7 @@ async function renderFunctionsPlot() {
       await plot2DWithPlotly(values, inference);
     }
 
-    const engineLabel = usedAdaptive ? "motore adaptive" : "fallback";
+    const engineLabel = usedAdaptive ? "function-plot" : "motore plotly";
     setMessage(refs.message, `Grafico 2D aggiornato (${inference.functionCount} funzioni, ${engineLabel}).`, "ok");
   } catch (error) {
     setMessage(refs.message, error.message || "Errore durante il plotting.", "error");
