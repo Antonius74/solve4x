@@ -51,7 +51,7 @@ const presets = [
     params: {},
   },
   {
-    expressions: ["z = x^2 + y^2"],
+    expressions: ["x^2 + y^2"],
     xMin: -8,
     xMax: 8,
     yMin: -8,
@@ -76,18 +76,94 @@ const presets = [
     colorMap: "Cividis",
     params: { k: 0.1 },
   },
+  {
+    expressions: ["sin(x)*cos(y)", "0.08*(x^2 + y^2)"],
+    xMin: -12,
+    xMax: 12,
+    yMin: -12,
+    yMax: 12,
+    resolution: 130,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Viridis",
+    params: {},
+  },
+  {
+    expressions: ["exp(-(x^2 + y^2)/18) * sin(3*x) * cos(3*y)", "0.2*cos(0.5*x)"],
+    xMin: -9,
+    xMax: 9,
+    yMin: -9,
+    yMax: 9,
+    resolution: 140,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Cividis",
+    params: {},
+  },
+  {
+    expressions: ["a*cos(sqrt(x^2 + y^2))", "0.15*sin(x + y)", "0.15*sin(x - y)"],
+    xMin: -10,
+    xMax: 10,
+    yMin: -10,
+    yMax: 10,
+    resolution: 130,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Turbo",
+    params: { a: 1 },
+  },
+  {
+    expressions: ["(x^2 - y^2)/12", "0.4*sin(x)*sin(y)"],
+    xMin: -10,
+    xMax: 10,
+    yMin: -10,
+    yMax: 10,
+    resolution: 125,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Inferno",
+    params: {},
+  },
+  {
+    expressions: ["sin(x*y)/(1 + 0.05*(x^2 + y^2))", "0.12*(x + y)", "-0.12*(x - y)"],
+    xMin: -10,
+    xMax: 10,
+    yMin: -10,
+    yMax: 10,
+    resolution: 130,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Electric",
+    params: {},
+  },
+  {
+    expressions: ["sqrt(abs(x*y))/3 + 0.25*sin(x)", "-sqrt(abs(x*y))/3 + 0.25*cos(y)"],
+    xMin: -12,
+    xMax: 12,
+    yMin: -12,
+    yMax: 12,
+    resolution: 125,
+    xScale: "linear",
+    yScale: "linear",
+    zScale: "linear",
+    colorMap: "Plasma",
+    params: {},
+  },
 ];
 
 const linearExamples = {
   2: {
     matrixA: "1 2; 0 1",
     vectorV: "1, 1",
-    vectorB: "2, 1",
   },
   3: {
     matrixA: "1 0 1; 0 2 0; 0 0 1",
     vectorV: "1, 1, 1",
-    vectorB: "2, 1, 3",
   },
 };
 
@@ -135,7 +211,6 @@ const refs = {
   laDimension: document.getElementById("laDimension"),
   laMatrixA: document.getElementById("laMatrixA"),
   laVectorV: document.getElementById("laVectorV"),
-  laVectorB: document.getElementById("laVectorB"),
   laApplyBtn: document.getElementById("laApplyBtn"),
   laExampleBtn: document.getElementById("laExampleBtn"),
   laResetBtn: document.getElementById("laResetBtn"),
@@ -161,6 +236,18 @@ let activeTab = TAB_FUNCTIONS;
 let expressionDebounceId;
 let resizeDebounceId;
 const parameterValues = {};
+let canvas3DFallbackCleanup = null;
+
+function clearCanvas3DFallback() {
+  if (typeof canvas3DFallbackCleanup === "function") {
+    try {
+      canvas3DFallbackCleanup();
+    } catch {
+      // Ignore cleanup failures.
+    }
+  }
+  canvas3DFallbackCleanup = null;
+}
 
 function setMessage(target, text, type = "") {
   if (!target) return;
@@ -584,6 +671,9 @@ async function waitForVisiblePlotArea(target, maxChecks = 14, delayMs = 40) {
 
 async function renderWithPlotly(target, traces, layout, config) {
   if (!target) throw new Error("Contenitore grafico non trovato.");
+  if (target === refs.plot) {
+    clearCanvas3DFallback();
+  }
   await waitForVisiblePlotArea(target);
   const canReact =
     target.classList.contains("js-plotly-plot") &&
@@ -609,6 +699,290 @@ async function renderWithPlotly(target, traces, layout, config) {
   return result;
 }
 
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function render3DCanvasFallback(target, payload) {
+  if (!target) throw new Error("Contenitore grafico 3D non trovato.");
+  clearCanvas3DFallback();
+  target.innerHTML = "";
+
+  const { surfaces, xValues, yValues, xAxisLabel, yAxisLabel } = payload;
+  const finiteZ = [];
+  surfaces.forEach((surface) => {
+    surface.zValues.forEach((row) => {
+      row.forEach((value) => {
+        if (Number.isFinite(value)) finiteZ.push(value);
+      });
+    });
+  });
+
+  if (!finiteZ.length) {
+    throw new Error("Nessun punto valido per il renderer 3D canvas.");
+  }
+
+  const zMin = Math.min(...finiteZ);
+  const zMax = Math.max(...finiteZ);
+  const xMin = Math.min(...xValues);
+  const xMax = Math.max(...xValues);
+  const yMin = Math.min(...yValues);
+  const yMax = Math.max(...yValues);
+
+  const xMid = (xMin + xMax) / 2;
+  const yMid = (yMin + yMax) / 2;
+  const zMid = (zMin + zMax) / 2;
+
+  const xHalfRange = Math.max(1e-9, (xMax - xMin) / 2);
+  const yHalfRange = Math.max(1e-9, (yMax - yMin) / 2);
+  const zHalfRange = Math.max(1e-9, (zMax - zMin) / 2);
+
+  const canvas = document.createElement("canvas");
+  canvas.className = "plot-canvas-3d";
+  canvas.setAttribute("aria-label", "Fallback 3D canvas");
+  target.appendChild(canvas);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Impossibile inizializzare il canvas 3D.");
+
+  const colors = ["#0b57d0", "#1f7a4c", "#8e5d2c", "#5e4ba6", "#007c8c"];
+
+  const state = {
+    yaw: -0.78,
+    pitch: 0.92,
+    zoom: 1.12,
+    panX: 0,
+    panY: 0,
+  };
+
+  const pointers = new Map();
+  let lastPinchDistance = null;
+  let lastPinchMid = null;
+
+  function resizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(320, Math.floor(target.clientWidth));
+    const height = Math.max(320, Math.floor(target.clientHeight));
+    canvas.width = Math.max(1, Math.floor(width * dpr));
+    canvas.height = Math.max(1, Math.floor(height * dpr));
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function projectPoint(x, y, z, viewport) {
+    const nx = (x - xMid) / xHalfRange;
+    const ny = (y - yMid) / yHalfRange;
+    const nz = ((z - zMid) / zHalfRange) * 0.7;
+
+    const cosY = Math.cos(state.yaw);
+    const sinY = Math.sin(state.yaw);
+    const xr = nx * cosY - ny * sinY;
+    const yr = nx * sinY + ny * cosY;
+    const zr = nz;
+
+    const cosP = Math.cos(state.pitch);
+    const sinP = Math.sin(state.pitch);
+    const yp = yr * cosP - zr * sinP;
+    const zp = yr * sinP + zr * cosP;
+
+    const cam = 3.3;
+    const perspective = cam / (cam - zp);
+    const scale = viewport.baseScale * state.zoom * perspective;
+    return {
+      x: viewport.cx + state.panX + xr * scale,
+      y: viewport.cy + state.panY - yp * scale,
+      z: zp,
+    };
+  }
+
+  function drawPolyline(points, color, width, alpha = 1) {
+    let started = false;
+    ctx.beginPath();
+    points.forEach((pt) => {
+      if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) {
+        started = false;
+        return;
+      }
+      if (!started) {
+        ctx.moveTo(pt.x, pt.y);
+        started = true;
+      } else {
+        ctx.lineTo(pt.x, pt.y);
+      }
+    });
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = width;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function drawAxes(viewport) {
+    const axisLines = [
+      { a: [xMin, 0, 0], b: [xMax, 0, 0], color: "#5b6b83", label: xAxisLabel || "x" },
+      { a: [0, yMin, 0], b: [0, yMax, 0], color: "#5b6b83", label: yAxisLabel || "y" },
+      { a: [0, 0, zMin], b: [0, 0, zMax], color: "#5b6b83", label: "z" },
+    ];
+
+    axisLines.forEach((axis) => {
+      const p1 = projectPoint(axis.a[0], axis.a[1], axis.a[2], viewport);
+      const p2 = projectPoint(axis.b[0], axis.b[1], axis.b[2], viewport);
+      drawPolyline([p1, p2], axis.color, 1.4, 0.9);
+      ctx.fillStyle = axis.color;
+      ctx.font = "600 12px 'Plus Jakarta Sans', sans-serif";
+      ctx.fillText(axis.label, p2.x + 6, p2.y - 6);
+    });
+  }
+
+  function drawSurfaces(viewport) {
+    const meshStride = Math.max(1, Math.round(Math.max(xValues.length, yValues.length) / 45));
+
+    surfaces.forEach((surface, surfaceIndex) => {
+      const color = colors[surfaceIndex % colors.length];
+
+      for (let j = 0; j < yValues.length; j += meshStride) {
+        const points = [];
+        for (let i = 0; i < xValues.length; i += meshStride) {
+          const z = surface.zValues[j]?.[i];
+          if (!Number.isFinite(z)) {
+            points.push(null);
+            continue;
+          }
+          points.push(projectPoint(xValues[i], yValues[j], z, viewport));
+        }
+        drawPolyline(points, color, 1.25, 0.82);
+      }
+
+      for (let i = 0; i < xValues.length; i += meshStride) {
+        const points = [];
+        for (let j = 0; j < yValues.length; j += meshStride) {
+          const z = surface.zValues[j]?.[i];
+          if (!Number.isFinite(z)) {
+            points.push(null);
+            continue;
+          }
+          points.push(projectPoint(xValues[i], yValues[j], z, viewport));
+        }
+        drawPolyline(points, color, 0.9, 0.7);
+      }
+    });
+  }
+
+  function drawLegend(viewport) {
+    if (surfaces.length <= 1) return;
+    const x = 12;
+    let y = 18;
+    ctx.font = "600 12px 'Plus Jakarta Sans', sans-serif";
+    surfaces.forEach((surface, index) => {
+      const color = colors[index % colors.length];
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y - 8, 10, 10);
+      ctx.fillStyle = "#344764";
+      ctx.fillText(surface.fn.originalExpression, x + 15, y);
+      y += 16;
+    });
+  }
+
+  function drawCanvas() {
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    const viewport = {
+      cx: width / 2,
+      cy: height / 2,
+      baseScale: Math.min(width, height) * 0.28,
+    };
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "#fcfdff";
+    ctx.fillRect(0, 0, width, height);
+    drawAxes(viewport);
+    drawSurfaces(viewport);
+    drawLegend(viewport);
+  }
+
+  function onPointerDown(event) {
+    canvas.setPointerCapture(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  }
+
+  function onPointerMove(event) {
+    if (!pointers.has(event.pointerId)) return;
+    const previous = pointers.get(event.pointerId);
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointers.size === 1) {
+      const dx = event.clientX - previous.x;
+      const dy = event.clientY - previous.y;
+      state.yaw += dx * 0.008;
+      state.pitch = clampNumber(state.pitch + dy * 0.008, -1.4, 1.4);
+      drawCanvas();
+      return;
+    }
+
+    if (pointers.size >= 2) {
+      const pair = [...pointers.values()].slice(0, 2);
+      const distance = Math.hypot(pair[0].x - pair[1].x, pair[0].y - pair[1].y);
+      const midpoint = {
+        x: (pair[0].x + pair[1].x) / 2,
+        y: (pair[0].y + pair[1].y) / 2,
+      };
+
+      if (lastPinchDistance !== null && lastPinchMid) {
+        const ratio = distance / Math.max(1e-6, lastPinchDistance);
+        state.zoom = clampNumber(state.zoom * ratio, 0.35, 4.5);
+        state.panX += midpoint.x - lastPinchMid.x;
+        state.panY += midpoint.y - lastPinchMid.y;
+      }
+
+      lastPinchDistance = distance;
+      lastPinchMid = midpoint;
+      drawCanvas();
+    }
+  }
+
+  function onPointerUp(event) {
+    pointers.delete(event.pointerId);
+    if (pointers.size < 2) {
+      lastPinchDistance = null;
+      lastPinchMid = null;
+    }
+  }
+
+  function onWheel(event) {
+    event.preventDefault();
+    const zoomFactor = Math.exp(-event.deltaY * 0.001);
+    state.zoom = clampNumber(state.zoom * zoomFactor, 0.35, 4.5);
+    drawCanvas();
+  }
+
+  resizeCanvas();
+  drawCanvas();
+
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+  canvas.addEventListener("pointerup", onPointerUp);
+  canvas.addEventListener("pointercancel", onPointerUp);
+  canvas.addEventListener("wheel", onWheel, { passive: false });
+
+  const onWindowResize = () => {
+    resizeCanvas();
+    drawCanvas();
+  };
+  window.addEventListener("resize", onWindowResize);
+
+  canvas3DFallbackCleanup = () => {
+    window.removeEventListener("resize", onWindowResize);
+    canvas.removeEventListener("pointerdown", onPointerDown);
+    canvas.removeEventListener("pointermove", onPointerMove);
+    canvas.removeEventListener("pointerup", onPointerUp);
+    canvas.removeEventListener("pointercancel", onPointerUp);
+    canvas.removeEventListener("wheel", onWheel);
+    if (canvas.parentNode === target) {
+      target.removeChild(canvas);
+    }
+  };
+}
+
 function denseSample(evalFn, min, max, count, scaleType = "linear") {
   const x = buildAxisValues(min, max, count, scaleType);
   const y = x.map((value) => {
@@ -627,6 +1001,7 @@ function plot2DWithFunctionPlot(values, inference) {
   if (typeof functionPlot !== "function") return false;
   if (values.xScale !== "linear" || values.yScale !== "linear") return false;
 
+  clearCanvas3DFallback();
   const axis = inference.axisVars[0] || "x";
   const baseScope = buildParameterScope(inference.parameterVars);
 
@@ -827,53 +1202,14 @@ async function plot3D(values, inference) {
       throw surfaceError;
     }
 
-    // Fallback senza WebGL: mappa di livello 2D (contour/heatmap).
-    const fallbackHeatmap = {
-      type: "contour",
-      x: xValues,
-      y: yValues,
-      z: prepared[0].zValues,
-      name: prepared[0].fn.originalExpression,
-      colorscale: "Cividis",
-      contours: { coloring: "heatmap" },
-      showscale: true,
-      connectgaps: false,
-      hovertemplate: `${prepared[0].fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
-    };
+    render3DCanvasFallback(refs.plot, {
+      surfaces: prepared,
+      xValues,
+      yValues,
+      xAxisLabel: xAxis,
+      yAxisLabel: yAxis,
+    });
 
-    const overlays = prepared.slice(1).map((item, idx) => ({
-      type: "contour",
-      x: xValues,
-      y: yValues,
-      z: item.zValues,
-      name: item.fn.originalExpression,
-      contours: { coloring: "none" },
-      line: { color: "#445570", width: 1.5 },
-      showscale: false,
-      connectgaps: false,
-      hovertemplate: `${item.fn.originalExpression}<br>${xAxis}=%{x:.6g}<br>${yAxis}=%{y:.6g}<br>z=%{z:.6g}<extra></extra>`,
-    }));
-
-    const layoutFallback = {
-      margin: { l: 46, r: 20, t: 14, b: 44 },
-      paper_bgcolor: "#fcfdff",
-      plot_bgcolor: "#fcfdff",
-      uirevision: "keep-view",
-      showlegend: inference.functionCount > 1,
-      xaxis: { title: xAxis, type: values.xScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
-      yaxis: { title: yAxis, type: values.yScale, gridcolor: "#e5ebf7", zerolinecolor: "#c8d5ef" },
-    };
-
-    const configFallback = {
-      responsive: true,
-      displaylogo: false,
-      displayModeBar: true,
-      scrollZoom: true,
-      doubleClick: "reset+autosize",
-      modeBarButtonsToRemove: ["lasso2d", "select2d"],
-    };
-
-    await renderWithPlotly(refs.plot, [fallbackHeatmap, ...overlays], layoutFallback, configFallback);
     return { fallback2d: true, reason: reason || "WebGL non disponibile" };
   }
 }
@@ -917,7 +1253,7 @@ async function renderFunctionsPlot() {
       if (result && result.fallback2d) {
         setMessage(
           refs.message,
-          `WebGL non disponibile: mostrata mappa 2D di fallback (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
+          `WebGL non disponibile: mostrato renderer 3D canvas di fallback (${inference.functionCount} funzioni su assi ${inference.axisVars[0]}, ${inference.axisVars[1]}).`,
           "ok",
         );
       } else {
@@ -988,6 +1324,95 @@ function formatScalar(value, decimals = 6) {
 
 function formatVector(values) {
   return `[${values.map((v) => formatScalar(v)).join(", ")}]`;
+}
+
+function toArrayValue(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value.valueOf === "function") {
+    const raw = value.valueOf();
+    if (Array.isArray(raw)) return raw;
+  }
+  return null;
+}
+
+function toNumberLike(value) {
+  if (typeof value === "number") return value;
+  if (value && typeof value.re === "number" && typeof value.im === "number") {
+    return { re: value.re, im: value.im };
+  }
+  if (value && typeof value.toNumber === "function") {
+    const n = value.toNumber();
+    if (Number.isFinite(n)) return n;
+  }
+  return value;
+}
+
+function extractEigenPairs(eigResult, dimension) {
+  if (!eigResult) return { values: null, vectors: null };
+
+  const rawValues = toArrayValue(eigResult.values) || (eigResult.values != null ? [eigResult.values] : null);
+  const values = rawValues ? rawValues.map((item) => toNumberLike(item)) : null;
+
+  if (Array.isArray(eigResult.eigenvectors)) {
+    const vectorsFromPairs = eigResult.eigenvectors
+      .map((item) => {
+        if (!item || !item.vector) return null;
+        const vec = toArrayValue(item.vector);
+        if (!vec) return null;
+        return vec.map((n) => toNumberLike(n));
+      })
+      .filter(Boolean);
+    if (vectorsFromPairs.length) {
+      return { values, vectors: vectorsFromPairs };
+    }
+  }
+
+  const rawVectors = toArrayValue(eigResult.vectors);
+  if (rawVectors && rawVectors.length) {
+    const rows = rawVectors.length;
+    const cols = Array.isArray(rawVectors[0]) ? rawVectors[0].length : 0;
+
+    if (rows === dimension && cols >= 1) {
+      const vectorsByColumn = Array.from({ length: cols }, (_, colIdx) =>
+        rawVectors.map((row) => toNumberLike(Array.isArray(row) ? row[colIdx] : row)),
+      );
+      return { values, vectors: vectorsByColumn };
+    }
+
+    if (rows >= 1 && cols === dimension) {
+      const vectorsByRow = rawVectors.map((row) => row.map((value) => toNumberLike(value)));
+      return { values, vectors: vectorsByRow };
+    }
+  }
+
+  return { values, vectors: null };
+}
+
+function detectEigenLambda(vectorV, transformedV, tolerance = 1e-6) {
+  if (!Array.isArray(vectorV) || !Array.isArray(transformedV) || vectorV.length !== transformedV.length) return null;
+
+  let lambda = null;
+  for (let i = 0; i < vectorV.length; i += 1) {
+    const v = vectorV[i];
+    const av = transformedV[i];
+    if (!Number.isFinite(v) || !Number.isFinite(av)) return null;
+
+    if (Math.abs(v) <= tolerance) {
+      if (Math.abs(av) > tolerance) return null;
+      continue;
+    }
+
+    const candidate = av / v;
+    if (lambda === null) {
+      lambda = candidate;
+      continue;
+    }
+    if (Math.abs(candidate - lambda) > tolerance * (1 + Math.abs(lambda))) {
+      return null;
+    }
+  }
+
+  return lambda;
 }
 
 function parseMatrix(text, dimension) {
@@ -1161,7 +1586,7 @@ function vectorTrace3D(vector, name, color, dash = "solid") {
   };
 }
 
-function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
+function renderLinearPlot(dimension, matrixA, vectorV, transformedV) {
   purgePlotlyIfNeeded(refs.laPlot);
   refs.laPlot.innerHTML = "";
 
@@ -1174,7 +1599,6 @@ function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
     const traces = [
       vectorTrace2D(vectorV, "v", "#0b57d0"),
       vectorTrace2D(transformedV, "A·v", "#b3261e"),
-      vectorTrace2D(vectorB, "b", "#188038", "dot"),
       vectorTrace2D(tBasis1, "A·e1", "#7b1fa2", "dash"),
       vectorTrace2D(tBasis2, "A·e2", "#006c73", "dash"),
     ];
@@ -1205,7 +1629,6 @@ function renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV) {
   const traces = [
     vectorTrace3D(vectorV, "v", "#0b57d0"),
     vectorTrace3D(transformedV, "A·v", "#b3261e"),
-    vectorTrace3D(vectorB, "b", "#188038", "dot"),
     vectorTrace3D(tBasis1, "A·e1", "#7b1fa2", "dash"),
     vectorTrace3D(tBasis2, "A·e2", "#006c73", "dash"),
     vectorTrace3D(tBasis3, "A·e3", "#7f5539", "dash"),
@@ -1235,39 +1658,53 @@ async function renderLinear() {
     const dimension = safeNumber(refs.laDimension.value, 2);
     const matrixA = parseMatrix(refs.laMatrixA.value, dimension);
     const vectorV = parseVector(refs.laVectorV.value, dimension, "Il vettore v");
-    const vectorB = parseVector(refs.laVectorB.value, dimension, "Il vettore b");
 
     const transformedV = math.multiply(matrixA, vectorV).valueOf();
     const determinant =
       typeof math.det === "function" ? math.det(matrixA) : matrixDeterminant(matrixA);
     const rank = typeof math.rank === "function" ? math.rank(matrixA) : matrixRank(matrixA);
 
-    let solution;
-    try {
-      solution = math.squeeze(math.lusolve(matrixA, vectorB)).valueOf();
-    } catch {
-      solution = null;
-    }
-
     let eigenValues = null;
+    let eigenVectors = null;
     try {
       const eig = math.eigs(matrixA);
-      eigenValues = eig.values;
+      const extracted = extractEigenPairs(eig, dimension);
+      eigenValues = extracted.values;
+      eigenVectors = extracted.vectors;
     } catch {
       eigenValues = null;
+      eigenVectors = null;
     }
 
-    await renderLinearPlot(dimension, matrixA, vectorV, vectorB, transformedV);
+    const eigenLambdaForV = detectEigenLambda(vectorV, transformedV);
+    const isEigenvectorForV = eigenLambdaForV !== null;
+
+    await renderLinearPlot(dimension, matrixA, vectorV, transformedV);
+
+    const eigenValueText =
+      eigenValues && eigenValues.length
+        ? eigenValues.map((val, idx) => `λ${idx + 1}=${formatScalar(val)}`).join(", ")
+        : "non disponibili";
+
+    const eigenVectorText =
+      eigenVectors && eigenVectors.length
+        ? eigenVectors
+            .map((vec, idx) => `v${idx + 1}=${formatVector(vec)}`)
+            .join("<br>")
+        : "non disponibili";
 
     refs.laOutput.innerHTML = [
       `<div><strong>A · v</strong> = ${formatVector(transformedV)}</div>`,
+      `<div><strong>v è autovettore?</strong> ${
+        isEigenvectorForV ? `sì (λ≈${formatScalar(eigenLambdaForV)})` : "no"
+      }</div>`,
       `<div><strong>det(A)</strong> = ${roundValue(determinant)}</div>`,
       `<div><strong>rank(A)</strong> = ${rank}</div>`,
-      `<div><strong>Soluzione Ax=b</strong> = ${solution ? formatVector(solution) : "non unica / non disponibile"}</div>`,
-      `<div><strong>Autovalori</strong> = ${eigenValues ? formatVector(eigenValues) : "non disponibili"}</div>`,
+      `<div><strong>Autovalori</strong> = ${eigenValueText}</div>`,
+      `<div><strong>Autovettori</strong><br>${eigenVectorText}</div>`,
     ].join("");
 
-    setMessage(refs.laMessage, "Algebra lineare aggiornata.", "ok");
+    setMessage(refs.laMessage, "Trasformazioni lineari aggiornate.", "ok");
   } catch (error) {
     setMessage(refs.laMessage, error.message || "Errore in algebra lineare.", "error");
   }
@@ -1278,7 +1715,6 @@ function setLinearExample() {
   const sample = linearExamples[dimension] || linearExamples[2];
   refs.laMatrixA.value = sample.matrixA;
   refs.laVectorV.value = sample.vectorV;
-  refs.laVectorB.value = sample.vectorB;
   renderLinear();
 }
 
@@ -1286,7 +1722,6 @@ function resetLinear() {
   refs.laDimension.value = "2";
   refs.laMatrixA.value = linearExamples[2].matrixA;
   refs.laVectorV.value = linearExamples[2].vectorV;
-  refs.laVectorB.value = linearExamples[2].vectorB;
   refs.laOutput.innerHTML = "";
   setMessage(refs.laMessage, "", "");
   renderLinear();

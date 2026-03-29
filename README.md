@@ -22,7 +22,7 @@ Poi visita `http://localhost:8080`.
 - Plot 2D: `f(x)` con zoom/pan e scala lineare/logaritmica.
 - Plot 3D: `z = f(x,y)` come superficie interattiva ruotabile con mouse/touch.
 - Controllo intervalli, risoluzione, color map.
-- Tab `Algebra Lineare` con matrici/vettori 2D-3D, trasformazione `A·v`, `det(A)`, `rank(A)`, soluzione `Ax=b`, autovalori e visualizzazione geometrica.
+- Tab `Algebra Lineare` focalizzata su trasformazioni lineari 2D-3D: `A·v`, `det(A)`, `rank(A)`, autovalori, autovettori e visualizzazione geometrica.
 - Preset rapidi per testare funzioni semplici e complesse.
 
 ## Sintassi funzioni
