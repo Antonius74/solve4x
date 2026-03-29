@@ -365,6 +365,10 @@ function inferFromExpression(expressionInput) {
   try {
     parsed = math.parse(normalized.formula);
   } catch (error) {
+    const detail = error && error.message ? error.message : "Errore di sintassi";
+    if (detail.includes("Unexpected operator ,")) {
+      throw new Error("Sintassi non valida: usa un textbox per funzione (bottone + Aggiungi funzione), non la virgola.");
+    }
     throw new Error(`Sintassi non valida: ${error.message}`);
   }
 
