@@ -1507,12 +1507,25 @@ function parseMatrix(text, dimension) {
     throw new Error(`La matrice A deve avere ${dimension} righe.`);
   }
 
-  const matrix = rows.map((row) =>
+  const parseCell = (raw, label) => {
+    const token = String(raw || "").trim();
+    if (!token) throw new Error(`${label} è vuota.`);
+    try {
+      const evaluated = math.evaluate(token);
+      const numeric = toFiniteNumber(evaluated);
+      if (numeric === null) throw new Error("not-finite");
+      return numeric;
+    } catch {
+      throw new Error(`${label} contiene valori non numerici.`);
+    }
+  };
+
+  const matrix = rows.map((row, rowIndex) =>
     row
       .split(/[\s,]+/)
       .map((item) => item.trim())
       .filter(Boolean)
-      .map(Number),
+      .map((item, colIndex) => parseCell(item, `La cella (${rowIndex + 1}, ${colIndex + 1}) della matrice A`)),
   );
 
   matrix.forEach((row, index) => {
@@ -1528,11 +1541,24 @@ function parseMatrix(text, dimension) {
 }
 
 function parseVector(text, dimension, label) {
+  const parseCell = (raw) => {
+    const token = String(raw || "").trim();
+    if (!token) throw new Error(`${label} contiene valori non numerici.`);
+    try {
+      const evaluated = math.evaluate(token);
+      const numeric = toFiniteNumber(evaluated);
+      if (numeric === null) throw new Error("not-finite");
+      return numeric;
+    } catch {
+      throw new Error(`${label} contiene valori non numerici.`);
+    }
+  };
+
   const values = String(text || "")
     .split(/[\s,;]+/)
     .map((item) => item.trim())
     .filter(Boolean)
-    .map(Number);
+    .map((item) => parseCell(item));
 
   if (values.length !== dimension) {
     throw new Error(`${label} deve contenere ${dimension} valori.`);
