@@ -10,10 +10,10 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="styles.css?v=20260329-17" />
+    <link rel="stylesheet" href="styles.css?v=20260403-1" />
     <script>
       (function () {
-        const appVersion = "20260329-17";
+        const appVersion = "20260403-1";
         const dependencySets = [
           {
             styles: ["https://cdn.jsdelivr.net/npm/mathlive@0.109.0/mathlive-fonts.css"],
@@ -253,12 +253,13 @@
           <div class="field-group">
             <label class="field-label">Matrice A</label>
             <textarea id="laMatrixA" class="input textarea-input">1 2; 0 1</textarea>
-            <p class="hint">Righe con ';' o nuova riga. Colonne con spazio o virgola.</p>
+            <p class="hint">Righe con ';' o nuova riga. Colonne con spazio o virgola. Supporta numeri e LaTeX: \frac{1}{\sqrt{2}}, \pi/3. Un solo valore => lambda·I.</p>
           </div>
 
           <div class="field-group">
             <label class="field-label">Vettore v (trasformazione)</label>
             <input id="laVectorV" class="input" value="1, 1" />
+            <p class="hint">Supporta anche valori in LaTeX reale, es: \frac{3}{2}, \sqrt{5}.</p>
           </div>
 
           <div class="action-row">

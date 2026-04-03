@@ -1497,21 +1497,119 @@ function detectEigenLambda(vectorV, transformedV, tolerance = 1e-6) {
   return lambda;
 }
 
+function readLatexGroup(expression, startIndex) {
+  if (!expression || expression[startIndex] !== "{") return null;
+  let depth = 0;
+  for (let i = startIndex; i < expression.length; i += 1) {
+    const ch = expression[i];
+    if (ch === "{") depth += 1;
+    if (ch === "}") depth -= 1;
+    if (depth === 0) {
+      return {
+        content: expression.slice(startIndex + 1, i),
+        endIndex: i,
+      };
+    }
+  }
+  return null;
+}
+
+function latexToMathExpression(input, depth = 0) {
+  if (depth > 12) return String(input || "").trim();
+  let expr = String(input || "").trim();
+  if (!expr) return expr;
+
+  expr = expr
+    .replace(/[−–]/g, "-")
+    .replace(/·/g, "*")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .replace(/\\,/g, "")
+    .replace(/\\;/g, "")
+    .replace(/\\!/g, "");
+
+  // \frac{a}{b} -> ((a)/(b)) con supporto annidato
+  let fracConverted = "";
+  for (let i = 0; i < expr.length; i += 1) {
+    if (expr.startsWith("\\frac", i)) {
+      let cursor = i + 5;
+      while (cursor < expr.length && /\s/.test(expr[cursor])) cursor += 1;
+      const numerator = readLatexGroup(expr, cursor);
+      if (!numerator) {
+        fracConverted += "frac";
+        i += 4;
+        continue;
+      }
+      cursor = numerator.endIndex + 1;
+      while (cursor < expr.length && /\s/.test(expr[cursor])) cursor += 1;
+      const denominator = readLatexGroup(expr, cursor);
+      if (!denominator) {
+        fracConverted += "frac";
+        i += 4;
+        continue;
+      }
+
+      const numExpr = latexToMathExpression(numerator.content, depth + 1);
+      const denExpr = latexToMathExpression(denominator.content, depth + 1);
+      fracConverted += `((${numExpr})/(${denExpr}))`;
+      i = denominator.endIndex;
+      continue;
+    }
+    fracConverted += expr[i];
+  }
+  expr = fracConverted;
+
+  // \sqrt{a} -> sqrt(a) con supporto annidato
+  let sqrtConverted = "";
+  for (let i = 0; i < expr.length; i += 1) {
+    if (expr.startsWith("\\sqrt", i)) {
+      let cursor = i + 5;
+      while (cursor < expr.length && /\s/.test(expr[cursor])) cursor += 1;
+      const radicand = readLatexGroup(expr, cursor);
+      if (!radicand) {
+        sqrtConverted += "sqrt";
+        i += 4;
+        continue;
+      }
+      const radExpr = latexToMathExpression(radicand.content, depth + 1);
+      sqrtConverted += `sqrt(${radExpr})`;
+      i = radicand.endIndex;
+      continue;
+    }
+    sqrtConverted += expr[i];
+  }
+  expr = sqrtConverted;
+
+  expr = expr
+    .replace(/\\pi/g, "pi")
+    .replace(/\\mathrm\{([a-zA-Z]+)\}/g, "$1")
+    .replace(/\\operatorname\{([a-zA-Z]+)\}/g, "$1")
+    .replace(/\\([a-zA-Z]+)/g, "$1")
+    .replace(/\^\s*\{([^{}]+)\}/g, "^($1)")
+    .replace(/_/g, "")
+    .replace(/{/g, "(")
+    .replace(/}/g, ")")
+    .replace(/\bln\(/g, "log(")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return expr;
+}
+
 function parseMatrix(text, dimension) {
   const rows = String(text || "")
     .split(/[;\n]+/)
     .map((row) => row.trim())
     .filter(Boolean);
 
-  if (rows.length !== dimension) {
-    throw new Error(`La matrice A deve avere ${dimension} righe.`);
-  }
-
   const parseCell = (raw, label) => {
     const token = String(raw || "").trim();
     if (!token) throw new Error(`${label} è vuota.`);
     try {
-      const evaluated = math.evaluate(token);
+      const expression = latexToMathExpression(token);
+      const evaluated = math.evaluate(expression);
       const numeric = toFiniteNumber(evaluated);
       if (numeric === null) throw new Error("not-finite");
       return numeric;
@@ -1520,12 +1618,39 @@ function parseMatrix(text, dimension) {
     }
   };
 
-  const matrix = rows.map((row, rowIndex) =>
+  const tokenizedRows = rows.map((row) =>
     row
       .split(/[\s,]+/)
       .map((item) => item.trim())
-      .filter(Boolean)
-      .map((item, colIndex) => parseCell(item, `La cella (${rowIndex + 1}, ${colIndex + 1}) della matrice A`)),
+      .filter(Boolean),
+  );
+
+  // Shorthand: un solo valore -> lambda * I
+  if (tokenizedRows.length === 1 && tokenizedRows[0].length === 1) {
+    const scalar = parseCell(tokenizedRows[0][0], "La cella (1, 1) della matrice A");
+    return Array.from({ length: dimension }, (_, rowIdx) =>
+      Array.from({ length: dimension }, (_, colIdx) => (rowIdx === colIdx ? scalar : 0)),
+    );
+  }
+
+  // Shorthand: una sola riga con N*N valori -> reshape row-major
+  if (tokenizedRows.length === 1 && tokenizedRows[0].length === dimension * dimension) {
+    const flatValues = tokenizedRows[0].map((item, idx) => {
+      const rowIdx = Math.floor(idx / dimension);
+      const colIdx = idx % dimension;
+      return parseCell(item, `La cella (${rowIdx + 1}, ${colIdx + 1}) della matrice A`);
+    });
+    return Array.from({ length: dimension }, (_, rowIdx) =>
+      flatValues.slice(rowIdx * dimension, (rowIdx + 1) * dimension),
+    );
+  }
+
+  if (tokenizedRows.length !== dimension) {
+    throw new Error(`La matrice A deve avere ${dimension} righe.`);
+  }
+
+  const matrix = tokenizedRows.map((tokens, rowIndex) =>
+    tokens.map((item, colIndex) => parseCell(item, `La cella (${rowIndex + 1}, ${colIndex + 1}) della matrice A`)),
   );
 
   matrix.forEach((row, index) => {
@@ -1545,7 +1670,8 @@ function parseVector(text, dimension, label) {
     const token = String(raw || "").trim();
     if (!token) throw new Error(`${label} contiene valori non numerici.`);
     try {
-      const evaluated = math.evaluate(token);
+      const expression = latexToMathExpression(token);
+      const evaluated = math.evaluate(expression);
       const numeric = toFiniteNumber(evaluated);
       if (numeric === null) throw new Error("not-finite");
       return numeric;
